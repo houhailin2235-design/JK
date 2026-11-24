@@ -32,6 +32,12 @@ def handler_for(password):
                 page=page.replace('Token仅保存在本机D盘配置文件，不返回到页面。','Token通过云平台运行时密钥注入，不返回到页面。')
                 page=page.replace('电脑需要保持运行。','监控由云端运行，无需本地电脑开机。')
                 page=page.replace('电脑与监控进程需保持运行。','云端监控进程需保持运行，无需本地电脑开机。')
+                claw_on=os.environ.get('CLAWBOT_SPREAD_ENABLED','false').lower()=='true'
+                page=page.replace('<h1>',f'<p>ClawBot价差提醒：{"已开启" if claw_on else "未开启"}；服务号继续接收原有提醒。</p><h1>',1)
+                page=page.replace('<button id="push-test">发送测试消息</button>','<button id="push-test">发送测试消息</button><button id="clawbot-test">测试 ClawBot 价差通道</button>')
+                page=page.replace('</script>','''
+el('clawbot-test').onclick=()=>pushAction('/api/push/test',{channel:'clawbot'});
+</script>''',1)
                 body=page.encode()
                 self.send_response(200)
                 self.send_header('Content-Type','text/html; charset=utf-8')
@@ -49,8 +55,12 @@ def handler_for(password):
             try:
                 length=int(self.headers.get('Content-Length','0'))
                 if not 0<length<=4096:raise ValueError('请求长度无效')
-                if json.loads(self.rfile.read(length))!={}:raise ValueError('测试请求格式无效')
-                result=wechat_push.send('云端雷达：微信推送测试','此消息由 Northflank 云端发送，用于验证微信通道。正式推送是否开启请查看运行时开关。',test=True)
+                data=json.loads(self.rfile.read(length))
+                if not isinstance(data,dict) or set(data)-{'channel'}:raise ValueError('测试请求格式无效')
+                channel=data.get('channel','wechat')
+                if channel not in ('wechat','clawbot'):raise ValueError('推送渠道无效')
+                title='ClawBot价差通道测试' if channel=='clawbot' else '云端雷达：微信推送测试'
+                result=wechat_push.send(title,'此消息由 Northflank 云端发送。ClawBot仅接收达到阈值的价差提醒；服务号继续接收原有提醒。此条仅为通道测试。',test=True,channel=channel)
                 self.push_response(result)
             except Exception as e:
                 self.push_response({'error':str(e) if isinstance(e,ValueError) else '测试失败，请检查云端推送配置'},400)

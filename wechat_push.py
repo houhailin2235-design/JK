@@ -27,7 +27,7 @@ def save(token,enabled):
 
 def status():
     config=settings()
-    with LOCK:return {'configured':bool(config.get('token')),'enabled':config.get('enabled',False),**STATUS,'daily_limit':DAILY_LIMIT,'cooldown_minutes':10}
+    with LOCK:return {'configured':bool(config.get('token')),'enabled':config.get('enabled',False),**STATUS,'daily_limit':DAILY_LIMIT,'cooldown_minutes':10,'clawbot_spread_enabled':os.environ.get('CLAWBOT_SPREAD_ENABLED','false').lower()=='true'}
 
 def qualifies(a):
     if a.get("type")=="newsflash":return bool(a.get("news_id"))
@@ -40,7 +40,8 @@ def qualifies(a):
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs):return None
 
-def send(title,content,test=False):
+def send(title,content,test=False,channel='wechat'):
+    if channel not in ('wechat','clawbot'):raise ValueError('推送渠道无效')
     config=settings()
     if not config.get('token'):raise ValueError('请先保存Token')
     if not test and not config.get('enabled'):return
@@ -52,7 +53,7 @@ def send(title,content,test=False):
         if time.time()-usage.get('last',0)<REQUEST_INTERVAL:raise ValueError('发送过快，请3秒后再试')
         usage.update(count=usage['count']+1,last=time.time())
         USAGE.write_text(json.dumps(usage),encoding='utf-8')
-    body=json.dumps({'token':config['token'],'title':title,'content':content,'template':'txt','channel':'wechat'}).encode()
+    body=json.dumps({'token':config['token'],'title':title,'content':content,'template':'txt','channel':channel}).encode()
     req=urllib.request.Request('https://www.pushplus.plus/send',data=body,headers={'Content-Type':'application/json','User-Agent':'LocalCrashMonitor/1.0'})
     try:
         with urllib.request.build_opener(NoRedirect()).open(req,timeout=12) as response:result=json.load(response)
@@ -60,7 +61,9 @@ def send(title,content,test=False):
         with LOCK:STATUS['last_result']='发送请求失败；未自动重试，请检查网络或服务状态'
         raise ValueError('发送请求失败；未自动重试') from None
     ok=result.get('code')==200
-    with LOCK:STATUS['last_result']='服务已受理，等待微信送达（不是送达确认）' if ok else '服务拒绝，错误码 '+str(result.get('code'))
+    with LOCK:
+        STATUS['last_result']=channel+'：'+('服务已受理，等待微信送达（不是送达确认）' if ok else '服务拒绝，错误码 '+str(result.get('code')))
+        STATUS[channel+'_result']=STATUS['last_result']
     if not ok:raise ValueError(STATUS['last_result'])
     return status()
 
@@ -85,9 +88,23 @@ def worker():
         finally:JOBS.task_done()
         time.sleep(REQUEST_INTERVAL)
 
+def channels_for(a):
+    channels=['wechat']
+    if (os.environ.get('CLAWBOT_SPREAD_ENABLED','false').lower()=='true'
+            and a.get('type') in ('indicative_spread','extreme_spread') and qualifies(a)):
+        channels.append('clawbot')
+    return channels
+
 def send_market(a):
-    is_spread=not a.get('quarantine_reason') and a.get('type')=='indicative_spread'
+    is_spread=a.get('type') in ('indicative_spread','extreme_spread')
     amount=a.get('indicative_spread_percent',0) if is_spread else a.get('drop_percent',0)
     title=f"{'极端价差⚠待核实' if a.get('type')=='extreme_spread' else '价差' if is_spread else '下跌'} {amount:.2f}% · {a.get('token','')}"
     content='\n'.join([f"链：{a.get('chain','')}",f"平台：{a.get('best_venue','')} {a.get('cex','')}",f"{'参考价差' if is_spread else '监测跌幅'}：{amount}%",f"类型：{a.get('verification',a.get('type',''))}",f"CA：{a.get('contract','')}",f"池子：{a.get('url','')}",'仅参考价差，未扣成本及验证充提路线。'])
-    send(title,content)
+    errors=[]
+    for i,channel in enumerate(channels_for(a)):
+        if i:time.sleep(REQUEST_INTERVAL)
+        try:send(title,content,channel=channel)
+        except Exception:
+            errors.append(channel+'推送失败，未自动重试')
+    if errors:
+        with LOCK:STATUS['last_result']='；'.join(errors)
