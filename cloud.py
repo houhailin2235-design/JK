@@ -28,7 +28,10 @@ def handler_for(password):
             if not self.authenticated():return
             if self.path=='/':
                 page=(monitor.ROOT/'index.html').read_text(encoding='utf-8')
-                page=page.replace('<h1>','<style>#news-key,#news-save,#news-enabled,#news-mode,#push-token,#push-save,#push-test,#push-enabled{display:none!important}</style><p>云端只读看板；密钥与推送开关请在平台 Runtime variables 设置。登录用户名：admin。</p><h1>',1)
+                page=page.replace('<h1>','<style>#news-key,#news-save,#news-enabled,#news-mode,#push-token,#push-save,#push-enabled{display:none!important}</style><p>云端看板；密钥与推送开关请在平台 Runtime variables 设置。登录用户名：admin。</p><h1>',1)
+                page=page.replace('Token仅保存在本机D盘配置文件，不返回到页面。','Token通过云平台运行时密钥注入，不返回到页面。')
+                page=page.replace('电脑需要保持运行。','监控由云端运行，无需本地电脑开机。')
+                page=page.replace('电脑与监控进程需保持运行。','云端监控进程需保持运行，无需本地电脑开机。')
                 body=page.encode()
                 self.send_response(200)
                 self.send_header('Content-Type','text/html; charset=utf-8')
@@ -38,7 +41,19 @@ def handler_for(password):
 
         def do_POST(self):
             if not self.authenticated():return
-            self.push_response({'error':'云端只读，请通过平台 Runtime variables 修改配置'},403)
+            # Only the explicit test action is writable; configuration stays platform-only.
+            expected_origin='https://'+self.headers.get('Host','')
+            if (self.path!='/api/push/test' or self.headers.get('Origin')!=expected_origin
+                    or self.headers.get('Content-Type','').split(';')[0]!='application/json'):
+                self.push_response({'error':'云端只读；测试请求必须来自当前看板'},403);return
+            try:
+                length=int(self.headers.get('Content-Length','0'))
+                if not 0<length<=4096:raise ValueError('请求长度无效')
+                if json.loads(self.rfile.read(length))!={}:raise ValueError('测试请求格式无效')
+                result=wechat_push.send('云端雷达：微信推送测试','此消息由 Northflank 云端发送，用于验证微信通道。正式推送是否开启请查看运行时开关。',test=True)
+                self.push_response(result)
+            except Exception as e:
+                self.push_response({'error':str(e) if isinstance(e,ValueError) else '测试失败，请检查云端推送配置'},400)
     return CloudHandler
 
 
