@@ -12,13 +12,26 @@ LOCK=threading.Lock()
 RISK=re.compile(r'黑客|攻击|被盗|盗取|漏洞|闪电贷|私钥泄露|暂停.{0,8}(充|提|交易)|停止.{0,8}(充|提)|脱锚|hack|exploit|breach|depeg',re.I)
 STATUS={'items':[],'updated':None,'error':'请先配置律动 API Key','last_batch':None}
 
+def is_crash_news(title):
+    # Use the headline: background paragraphs often mention unrelated past crashes.
+    title=re.sub(r'(?:未|没有|并未|不会|避免|防止)(?:出现|发生)?(?:暴跌|崩盘|闪崩)', '', title)
+    if re.search(r'暴跌|大跌|急跌|骤跌|闪崩|崩盘|跳水|\b(?:crash(?:es|ed)?|plummet(?:s|ed)?|plung(?:e|es|ed))\b',title,re.I):
+        return not bool(re.search(r'或将|可能|如果|是否|会否|会不会|预测|担忧|警惕|恐将',title))
+    drops=re.findall(r'(?:下跌|跌幅(?:达|超|超过)?|跌超|跌逾|跌去|跌近|跌破|下挫|重挫|回撤|跌)[^。；，,\d]{0,12}(\d+(?:\.\d+)?)\s*[%％]',title)
+    return any(float(value)>=25 for value in drops)
+
+def should_push(item,mode):
+    if mode=='crash':return is_crash_news(item['title'])
+    if mode=='risk':return item.get('risk',False)
+    return mode=='all'
+
 def settings():
     if os.environ.get('BLOCKBEATS_API_KEY'):
-        return {'api_key':os.environ['BLOCKBEATS_API_KEY'],'enabled':os.environ.get('NEWS_PUSH_ENABLED','false').lower()=='true','mode':'all'}
+        return {'api_key':os.environ['BLOCKBEATS_API_KEY'],'enabled':os.environ.get('NEWS_PUSH_ENABLED','false').lower()=='true','mode':os.environ.get('NEWS_PUSH_MODE','crash')}
     return json.loads(SECRET.read_text(encoding='utf-8')) if SECRET.exists() else {}
 
 def save(key,enabled,mode):
-    if mode not in ('risk','all'):raise ValueError('快讯模式无效')
+    if mode not in ('crash','risk','all'):raise ValueError('快讯模式无效')
     key=key.strip() or settings().get('api_key','')
     if not key or len(key)>500 or '\n' in key or '\r' in key:raise ValueError('请填写有效的律动 API Key')
     with LOCK:
@@ -73,7 +86,7 @@ def run(enqueue):
             try:
                 items=fetch(c['api_key']);now=time.time()
                 fresh=fresh_items(items,set(seen),initialized,now)
-                chosen=[x for x in fresh if c.get('mode','all')=='all' or x['risk']]
+                chosen=[x for x in fresh if should_push(x,c.get('mode','crash'))]
                 # Persist deduplication before enqueueing; restart won't resend the same item.
                 seen=list(dict.fromkeys([x['id'] for x in items]+seen))[:5000]
                 tmp=CACHE.with_suffix('.tmp')
