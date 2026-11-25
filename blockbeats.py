@@ -20,8 +20,12 @@ def is_crash_news(title):
     drops=re.findall(r'(?:下跌|跌幅(?:达|超|超过)?|跌超|跌逾|跌去|跌近|跌破|下挫|重挫|回撤|跌)[^。；，,\d]{0,12}(\d+(?:\.\d+)?)\s*[%％]',title)
     return any(float(value)>=25 for value in drops)
 
+def is_theft_news(title):
+    title=re.sub(r'(?:并未|没有|未曾|未|未发现|并无|尚无)(?:发生|出现|资金|资产|任何|遭到|遭|被)*?(?:被盗|遭盗|失窃|盗取|盗走)', '', title)
+    return bool(re.search(r'被盗|遭盗|失窃|盗取|盗走|遭窃|\b(?:stolen|theft|stole)\b',title,re.I))
+
 def should_push(item,mode):
-    if mode=='crash':return is_crash_news(item['title'])
+    if mode=='crash':return is_crash_news(item['title']) or is_theft_news(item['title'])
     if mode=='risk':return item.get('risk',False)
     return mode=='all'
 
