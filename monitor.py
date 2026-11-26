@@ -197,6 +197,13 @@ class Handler(BaseHTTPRequestHandler):
             self.push_response(result)
         except Exception as e:self.push_response({'error':str(e) if isinstance(e,ValueError) else '操作失败，请检查本地配置'},400)
     def do_GET(self):
+        if self.path=='/api/arb/wallet-config':
+            artifact=json.loads((ROOT/'executor-artifact.json').read_text(encoding='utf-8'))
+            networks={c['id']:{'name':name,'symbol':c['symbol'],'asset':c['base'],'decimals':c['decimals'],'routers':list(c['routers'].values()),'native':'BNB' if name=='bsc' else 'ETH'} for name,c in dex_quotes.CHAINS.items()}
+            self.push_response({'artifact':artifact,'chains':networks,'execution_enabled':False});return
+        if self.path=='/wallet-connect.js':
+            body=(ROOT/'wallet-connect.js').read_bytes()
+            self.send_response(200);self.send_header('Content-Type','application/javascript; charset=utf-8');self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(body);return
         if self.path=='/api/dex-quotes':self.push_response(dex_quotes.status());return
         if self.path=='/api/news/status':self.push_response(blockbeats.status());return
         if self.path=='/api/push/status':self.push_response(wechat_push.status());return

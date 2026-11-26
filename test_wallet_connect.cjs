@@ -1,0 +1,36 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const wallet=require('./wallet-connect.js');
+assert.equal(wallet.units('1.25',6),1250000n);
+for(const value of ['0','-1','NaN','1e3','10001','0.0000001'])assert.throws(()=>wallet.units(value,6));
+assert.equal(wallet.format('0x0',18),'0');
+const owner='0x1111111111111111111111111111111111111111',asset='0x2222222222222222222222222222222222222222';
+const cfg={asset,routers:['0x3333333333333333333333333333333333333333','0x4444444444444444444444444444444444444444'],decimals:6,symbol:'USDC',native:'BNB'};
+const artifact={bytecode:'0x6000'};
+const data=wallet.deploymentData(artifact,cfg,owner,'100');
+assert.equal(data,'0x6000'+[owner,asset,...cfg.routers].map(a=>a.slice(2).padStart(64,'0')).join('')+(100000000n).toString(16).padStart(64,'0'));
+assert.throws(()=>wallet.deploymentData(artifact,cfg,'0x0','100'));
+const elements=new Map();
+function element(id){if(!elements.has(id))elements.set(id,{value:'',textContent:'',children:[],append(x){this.children.push(x);if(this.value==='')this.value=x.value;},addEventListener(){}});return elements.get(id);}
+element('wallet-expected').value=owner;element('wallet-network').value='0x38';element('wallet-cap').value='100';
+const methods=[],handlers={};
+let currentOwner=owner;
+const provider={on(e,fn){handlers[e]=fn;},removeListener(e){delete handlers[e];},async request({method}){methods.push(method);switch(method){case 'eth_requestAccounts':case 'eth_accounts':return [currentOwner];case 'eth_chainId':return '0x38';case 'eth_getBalance':return '0xde0b6b3a7640000';case 'eth_call':return '0x5f5e100';case 'eth_gasPrice':return '0x3b9aca00';case 'eth_estimateGas':return '0x7a120';default:throw Error('unexpected method '+method);}}};
+const context={console,Event:class{constructor(type){this.type=type;}},document:{getElementById:element,createElement(){return {value:'',textContent:''};}},okxwallet:provider,addEventListener(){},dispatchEvent(){},fetch:async()=>({ok:true,json:async()=>({artifact,chains:{'0x38':cfg}})})};
+vm.runInNewContext(fs.readFileSync('wallet-connect.js','utf8'),context);
+(async()=>{
+ assert.equal(methods.length,0,'loading must not request account access');
+ await element('wallet-connect').onclick();
+ assert.ok(element('wallet-status').textContent.includes(owner));
+ await element('wallet-estimate').onclick();
+ assert.ok(element('wallet-estimate-result').textContent.includes('未签名、未部署'));
+ const estimateCount=methods.filter(m=>m==='eth_estimateGas').length;
+ element('wallet-expected').value=asset;await element('wallet-estimate').onclick();
+ assert.ok(element('wallet-status').textContent.includes('不一致'));
+ assert.equal(methods.filter(m=>m==='eth_estimateGas').length,estimateCount);
+ element('wallet-expected').value=owner;currentOwner=asset;await handlers.accountsChanged();
+ assert.ok(element('wallet-status').textContent.includes('不一致'));
+ assert.ok(element('wallet-estimate-result').textContent.includes('尚未估算'));
+ assert.ok(methods.every(m=>!m.includes('sendTransaction')&&!m.includes('sign')));
+ element('wallet-disconnect').onclick();assert.ok(element('wallet-status').textContent.includes('已断开'));
+ console.log('wallet connection, address guard, estimate invalidation and read-only tests passed');
+})().catch(e=>{console.error(e);process.exitCode=1;});

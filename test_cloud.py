@@ -20,6 +20,16 @@ class CloudChecks(unittest.TestCase):
                 quote_status=json.load(response)
                 self.assertFalse(quote_status['execution_enabled'])
                 self.assertEqual(set(quote_status['chains']),{'bsc','base','ethereum'})
+            for path in ['/api/arb/wallet-config','/wallet-connect.js']:
+                with self.assertRaises(urllib.error.HTTPError) as private:
+                    opener.open(root+path)
+                self.assertEqual(private.exception.code,401);private.exception.close()
+            with opener.open(urllib.request.Request(root+'/api/arb/wallet-config',headers={'Authorization':auth})) as response:
+                wallet_config=json.load(response)
+                self.assertEqual(set(wallet_config['chains']),{'0x38','0x2105','0x1'})
+                self.assertTrue(wallet_config['artifact']['bytecode'].startswith('0x'))
+                self.assertFalse(wallet_config['execution_enabled'])
+                self.assertNotIn('rpc',json.dumps(wallet_config))
             with patch('dex_quotes.manual_quote',return_value={'execution_enabled':False}) as quote:
                 with self.assertRaises(urllib.error.HTTPError) as denied_quote:
                     opener.open(urllib.request.Request(root+'/api/arb/quote',data=b'{}',headers={**headers,'Origin':'https://evil.example'}))

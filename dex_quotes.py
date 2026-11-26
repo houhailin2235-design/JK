@@ -171,7 +171,7 @@ def status():
     for chain,s in chains.items():
         s['stale']=bool(s['error']) or s['updated'] is None or time.time()-s['updated']>90
         rows.extend({**r,'stale':s['stale'] or time.time()-r.get('observed_at',0)>90} for r in s['rows'])
-    return {'mode':'quotes_only','execution_enabled':False,'execution_stage':'wallet_and_deployment_required','chains':chains,
+    return {'mode':'quotes_only','execution_enabled':False,'execution_stage':'deployment_and_simulation_required','chains':chains,
             'rows':sorted(rows,key=lambda r:r['buffered_net_usdt'],reverse=True)}
 
 MANUAL_LAST=0
@@ -192,7 +192,7 @@ def manual_quote(data):
     try:sample=collect(RPC(chain),chain,selected,(amount,))
     except Exception:raise ValueError('本次复核未取得有效报价，请稍后重试；未发送交易') from None
     return {**sample,'stable_symbol':CHAINS[chain]['symbol'],'execution_enabled':False,
-            'message':'仅完成指定金额报价；尚未连接专用钱包或部署执行合约，不能执行交易'}
+            'message':'仅完成指定金额报价；执行合约尚未部署，此步不执行交易'}
 
 def notify_candidate(row):
     import wechat_push
