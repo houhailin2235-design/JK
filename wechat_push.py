@@ -32,6 +32,7 @@ def status():
 def qualifies(a):
     if a.get("type")=="newsflash":return bool(a.get("news_id"))
     if excluded(a):return False
+    if a.get('type')=='arb_candidate':return bool(a.get('positive_quote_rechecked') and a.get('buffered_net_usdt',0)>0 and 0<=time.time()-a.get('observed_at',0)<=90)
     spread=not a.get('quarantine_reason') and a.get('type')=='indicative_spread' and a.get('spread_identity')=='verified' and a.get('indicative_spread_percent',0)>25
     crash=a.get('type') in ('cex_crash','multi_pool_price_drop') and a.get('drop_percent',0)>=25
     extreme=a.get('type')=='extreme_spread' and a.get('indicative_spread_percent',0)>300
@@ -70,6 +71,7 @@ def send(title,content,test=False,channel='wechat'):
 def enqueue(alert):
     if not qualifies(alert) or not settings().get('enabled'):return
     key=('news:'+alert['news_id']) if alert.get('type')=='newsflash' else alert.get('chain','')+':'+(alert.get('contract') or alert.get('pair') or alert.get('token',''))
+    if alert.get('type')=='arb_candidate':key='arb:'+key
     if time.time()-LAST.get(key,0)<600:return
     try:JOBS.put_nowait(dict(alert));LAST[key]=time.time()
     except queue.Full:
@@ -79,7 +81,9 @@ def worker():
     while True:
         a=JOBS.get()
         try:
-            if a.get('type')=='newsflash':
+            if a.get('type')=='arb_candidate':
+                if qualifies(a):send(a['news_title'],a['news_content'])
+            elif a.get('type')=='newsflash':
                 send(a['news_title'],a['news_content'])
             else:
                 send_market(a)

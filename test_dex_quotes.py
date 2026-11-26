@@ -61,6 +61,26 @@ class QuoteTests(unittest.TestCase):
     def test_no_write_rpc_methods(self):
         with self.assertRaises(ValueError):dq.RPC().batch([('eth_sendRawTransaction',['0x'])])
 
+    def test_manual_amount_requotes_without_execution(self):
+        token={'address':dq.WBNB,'symbol':'WBNB'}
+        with patch.object(dq,'monitored_tokens',return_value=[token]),patch.object(dq,'collect',return_value={'rows':[]}) as collect,patch.object(dq,'MANUAL_LAST',0):
+            for amount in ['NaN','-1','0','10001','1.0000000000000000001']:
+                with self.assertRaises(ValueError):dq.manual_quote({'chain':'bsc','ca':dq.WBNB,'amount':amount})
+            self.assertFalse(collect.called)
+            result=dq.manual_quote({'chain':'bsc','ca':dq.WBNB,'amount':'123.45'})
+            self.assertFalse(result['execution_enabled'])
+            self.assertEqual(str(collect.call_args.args[3][0]),'123.45')
+
+    def test_candidate_push_requires_recheck_and_separate_cooldown(self):
+        import wechat_push as push
+        row={'type':'arb_candidate','chain':'bsc','contract':dq.WBNB,'positive_quote_rechecked':True,'buffered_net_usdt':1,'observed_at':dq.time.time()}
+        self.assertTrue(push.qualifies(row))
+        self.assertFalse(push.qualifies({**row,'observed_at':0}))
+        self.assertFalse(push.qualifies({**row,'positive_quote_rechecked':False}))
+        with patch.object(push,'settings',return_value={'enabled':True}),patch.object(push,'JOBS') as jobs,patch.dict(push.LAST,{'bsc:'+dq.WBNB:dq.time.time()},clear=True):
+            push.enqueue(row);push.enqueue(row)
+            self.assertEqual(jobs.put_nowait.call_count,1)
+
     def test_quotes_pinned_and_wrong_chain_rejected(self):
         class FakeRPC:
             def __init__(self,chain='0x38'):self.chain=chain;self.blocks=[]

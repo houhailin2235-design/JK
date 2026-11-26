@@ -1,5 +1,6 @@
 """Read-only multi-chain round-trip router quotes. Never signs or broadcasts transactions."""
 import json
+from decimal import Decimal, InvalidOperation
 import logging
 import os
 import pathlib
@@ -106,7 +107,7 @@ def monitored_tokens(chain):
         found[address]=item.get('label',address[:10])
     return [{'address':address,'symbol':symbol} for address,symbol in sorted(found.items()) if address!=CHAINS[chain]['base']]
 
-def collect(rpc,chain_name='bsc',selected=None):
+def collect(rpc,chain_name='bsc',selected=None,amounts=SIZES):
     cfg=CHAINS[chain_name];routers=cfg['routers'];tokens=cfg['tokens']
     base=cfg['base'];wrapped=cfg['wrapped'];unit=10**cfg['decimals']
     if selected is not None:tokens={x['address']:x['address'] for x in selected}
@@ -130,10 +131,10 @@ def collect(rpc,chain_name='bsc',selected=None):
     gas_budget=gas*900_000/10**18*(price/unit)*1.5+cfg['extra_fee']
     buys=[];labels=[]
     for symbol,token in tokens.items():
-        for size in SIZES:
+        for size in amounts:
             for venue in routers:
                 for path in paths(token,base,wrapped):
-                    buys.append((venue,size*unit,path));labels.append((symbol,size))
+                    buys.append((venue,int(size*unit),path));labels.append((symbol,size))
     first=rpc.quotes(buys,block)
     sells=[];details=[]
     for buy,(symbol,size),received in zip(buys,labels,first):
@@ -147,9 +148,9 @@ def collect(rpc,chain_name='bsc',selected=None):
     best={}
     for sell,(symbol,size,buy),returned in zip(sells,details,second):
         if not returned:continue
-        row={'chain':chain_name,'stable_symbol':cfg['symbol'],'extra_fee_budget':cfg['extra_fee'],'token':labels_by_address[tokens[symbol]],'ca':tokens[symbol],'amount_usdt':size,'buy_venue':buy[0],
+        row={'chain':chain_name,'stable_symbol':cfg['symbol'],'extra_fee_budget':cfg['extra_fee'],'token':labels_by_address[tokens[symbol]],'ca':tokens[symbol],'amount_usdt':float(size),'buy_venue':buy[0],
              'sell_venue':sell[0],'buy_path':buy[2],'sell_path':sell[2],
-             **cost_result(size*unit,returned,gas_budget,decimals=cfg['decimals'])}
+             **cost_result(int(size*unit),returned,gas_budget,decimals=cfg['decimals'])}
         key=(symbol,size,buy[0],sell[0])
         if key not in best or row['output_usdt']>best[key]['output_usdt']:best[key]=row
     if time.time()-timestamp>30:raise ValueError('本轮报价耗时过长，结果作废')
@@ -170,8 +171,36 @@ def status():
     for chain,s in chains.items():
         s['stale']=bool(s['error']) or s['updated'] is None or time.time()-s['updated']>90
         rows.extend({**r,'stale':s['stale'] or time.time()-r.get('observed_at',0)>90} for r in s['rows'])
-    return {'mode':'quotes_only','execution_enabled':False,'chains':chains,
+    return {'mode':'quotes_only','execution_enabled':False,'execution_stage':'wallet_and_deployment_required','chains':chains,
             'rows':sorted(rows,key=lambda r:r['buffered_net_usdt'],reverse=True)}
+
+MANUAL_LAST=0
+def manual_quote(data):
+    global MANUAL_LAST
+    if not isinstance(data,dict) or set(data)!={'chain','ca','amount'}:raise ValueError('金额复核参数无效')
+    chain=data['chain']
+    if chain not in CHAINS or not isinstance(data['ca'],str):raise ValueError('不支持的链或CA')
+    try:amount=Decimal(str(data['amount']))
+    except InvalidOperation:raise ValueError('金额格式无效') from None
+    unit=10**CHAINS[chain]['decimals']
+    if not amount.is_finite() or not 1<=amount<=10000 or amount*unit!=(amount*unit).to_integral_value():raise ValueError('测算金额需为1至10000，且符合该稳定币精度')
+    selected=[x for x in monitored_tokens(chain) if x['address']==data['ca'].lower()]
+    if not selected:raise ValueError('CA不在当前监控候选目录')
+    with LOCK:
+        if time.time()-MANUAL_LAST<10:raise ValueError('复核过于频繁，请10秒后再试')
+        MANUAL_LAST=time.time()
+    try:sample=collect(RPC(chain),chain,selected,(amount,))
+    except Exception:raise ValueError('本次复核未取得有效报价，请稍后重试；未发送交易') from None
+    return {**sample,'stable_symbol':CHAINS[chain]['symbol'],'execution_enabled':False,
+            'message':'仅完成指定金额报价；尚未连接专用钱包或部署执行合约，不能执行交易'}
+
+def notify_candidate(row):
+    import wechat_push
+    if not row.get('positive_quote_rechecked') or row.get('buffered_net_usdt',0)<=0:return
+    wechat_push.enqueue({'type':'arb_candidate','chain':row['chain'],'contract':row['ca'],'token':row['token'],
+        'observed_at':row['observed_at'],'positive_quote_rechecked':True,'buffered_net_usdt':row['buffered_net_usdt'],
+        'news_title':'套利报价候选 · 请确认金额',
+        'news_content':f"链：{row['chain']}\n代币：{row['token']}\nCA：{row['ca']}\n参考金额：{row['amount_usdt']} {row['stable_symbol']}\n买入：{row['buy_venue']} → 卖出：{row['sell_venue']}\n扣预算后参考差额：{row['buffered_net_usdt']} {row['stable_symbol']}\n已复查报价，尚未验证真实兑换、代币税和最终费用，不代表可执行利润。\n请打开看板的多链套利测算，填写本次金额重新复核。\nhttps://p01--xlin--2wwbcbclk59q.code.run/"})
 
 def candidate_signals(chain,catalog,snapshot,now):
     known={x['address'] for x in catalog};signals={}
@@ -234,6 +263,7 @@ def run_chain(chain,source):
             for row in batch_rows:
                 prior=confirm.get(row['ca'])
                 row['positive_quote_rechecked']=bool(row['positive_quote'] and prior and row['block']>prior['block'] and (row['amount_usdt'],row['buy_venue'],row['sell_venue']) in prior['routes'])
+            for row in sorted(batch_rows,key=lambda r:r['buffered_net_usdt'],reverse=True):notify_candidate(row)
             for address in {r['ca'] for r in batch_rows if r['positive_quote']}:
                 if address not in confirm:
                     confirm[address]={'block':sample['block'],'routes':{(r['amount_usdt'],r['buy_venue'],r['sell_venue']) for r in batch_rows if r['ca']==address and r['positive_quote']}}

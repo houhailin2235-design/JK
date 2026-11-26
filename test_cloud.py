@@ -20,6 +20,13 @@ class CloudChecks(unittest.TestCase):
                 quote_status=json.load(response)
                 self.assertFalse(quote_status['execution_enabled'])
                 self.assertEqual(set(quote_status['chains']),{'bsc','base','ethereum'})
+            with patch('dex_quotes.manual_quote',return_value={'execution_enabled':False}) as quote:
+                with self.assertRaises(urllib.error.HTTPError) as denied_quote:
+                    opener.open(urllib.request.Request(root+'/api/arb/quote',data=b'{}',headers={**headers,'Origin':'https://evil.example'}))
+                denied_quote.exception.close();self.assertFalse(quote.called)
+                with opener.open(urllib.request.Request(root+'/api/arb/quote',data=b'{}',headers=headers)) as response:
+                    self.assertFalse(json.load(response)['execution_enabled'])
+                quote.assert_called_once()
             with patch('wechat_push.send',return_value={'last_result':'accepted'}) as send:
                 with opener.open(urllib.request.Request(root+'/api/push/test',data=b'{}',headers=headers)) as r:
                     self.assertEqual(json.load(r)['last_result'],'accepted')

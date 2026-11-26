@@ -50,13 +50,15 @@ el('clawbot-test').onclick=()=>pushAction('/api/push/test',{channel:'clawbot'});
             if not self.authenticated():return
             # Only the explicit test action is writable; configuration stays platform-only.
             expected_origin='https://'+self.headers.get('Host','')
-            if (self.path!='/api/push/test' or self.headers.get('Origin')!=expected_origin
+            if (self.path not in ('/api/push/test','/api/arb/quote') or self.headers.get('Origin')!=expected_origin
                     or self.headers.get('Content-Type','').split(';')[0]!='application/json'):
                 self.push_response({'error':'云端只读；测试请求必须来自当前看板'},403);return
             try:
                 length=int(self.headers.get('Content-Length','0'))
                 if not 0<length<=4096:raise ValueError('请求长度无效')
                 data=json.loads(self.rfile.read(length))
+                if self.path=='/api/arb/quote':
+                    self.push_response(dex_quotes.manual_quote(data));return
                 if not isinstance(data,dict) or set(data)-{'channel'}:raise ValueError('测试请求格式无效')
                 channel=data.get('channel','wechat')
                 if channel not in ('wechat','clawbot'):raise ValueError('推送渠道无效')

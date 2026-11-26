@@ -188,7 +188,8 @@ class Handler(BaseHTTPRequestHandler):
             length=int(self.headers.get('Content-Length','0'))
             if not 0<length<=4096:raise ValueError('请求长度无效')
             data=json.loads(self.rfile.read(length))
-            if self.path=='/api/push/config':wechat_push.save(data.get('token',''),data.get('enabled',False));result=wechat_push.status()
+            if self.path=='/api/arb/quote':result=dex_quotes.manual_quote(data)
+            elif self.path=='/api/push/config':wechat_push.save(data.get('token',''),data.get('enabled',False));result=wechat_push.status()
             elif self.path=='/api/news/config':
                 blockbeats.save(data.get('api_key',''),data.get('enabled',False),data.get('mode','all'));result=blockbeats.status()
             elif self.path=='/api/push/test':result=wechat_push.send('多链雷达：微信推送测试','这是一条测试消息。正式提醒仅限已核实参考价差严格大于25%。',test=True)
