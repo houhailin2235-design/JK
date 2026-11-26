@@ -94,6 +94,52 @@ def cost_result(amount,out,gas_usdt,slippage_bps=50,decimals=18):
             'buffered_net_usdt':round(net,8),'positive_quote':net>0,
             'execution_simulated':False,'executable':False,'token_tax_verified':False}
 
+def screen_routes(rpc,rows,block):
+    """Fail closed on missing capacity probes; never blacklist an entire token.
+
+    Compare each actual leg with a 1/10-size quote at the same block. A >5%
+    deterioration in output per input rejects the route for this amount.
+    This is a quote-based depth check, not a reserve audit or swap simulation.
+    """
+    jobs=[];pending=[]
+    for row in rows:
+        row['route_quality_passed']=False
+        row['depth_check']='not_run'
+        if row['output_usdt']<row['amount_usdt']*.95:
+            row['rejection_reason']='往返本金损失超过5%；可能存在浅池或价格异常'
+        elif row['buffered_net_usdt']<=0:
+            row['rejection_reason']='往返报价未覆盖费用预算'
+        else:
+            pending.append(row)
+            for venue,amount,path in [(row['buy_venue'],int(row['buy_input_raw']),row['buy_path']),
+                                      (row['sell_venue'],int(row['buy_output_raw']),row['sell_path'])]:
+                jobs.append((venue,max(1,amount//10),path))
+            continue
+        row['positive_quote']=False
+    try:probes=rpc.quotes(jobs,block) if jobs else []
+    except Exception:probes=[]  # Missing depth data cannot qualify a candidate.
+    for i,row in enumerate(pending):
+        small=probes[i*2:i*2+2]
+        actual=[(int(row['buy_input_raw']),int(row['buy_output_raw'])),
+                (int(row['buy_output_raw']),int(row['sell_output_raw']))]
+        impacts=[]
+        for j,(amount,out) in enumerate(actual):
+            probe=small[j] if len(small)>j else None
+            probe_in=jobs[i*2+j][1]
+            if not probe or amount<=probe_in:
+                impacts.append(None)
+            else:
+                impacts.append(max(0.,100*(1-out*probe_in/(probe*amount))))
+        row['leg_price_impact_percent']=impacts
+        if any(x is None for x in impacts):
+            row['depth_check']='unavailable';row['rejection_reason']='路径容量检查未取得完整报价'
+        elif any(x>5 for x in impacts):
+            row['depth_check']='rejected';row['rejection_reason']='单腿报价价格冲击超过5%，当前金额不适用'
+        else:
+            row['depth_check']='passed';row['route_quality_passed']=True;row['rejection_reason']=''
+        row['positive_quote']=row['positive_quote'] and row['route_quality_passed']
+    return rows
+
 def monitored_tokens(chain):
     root=pathlib.Path(__file__).resolve().parent
     cfg=json.loads((root/'config.json').read_text(encoding='utf-8'))
@@ -143,16 +189,18 @@ def collect(rpc,chain_name='bsc',selected=None,amounts=SIZES):
             if venue==buy[0]:continue
             for path in paths(tokens[symbol],base,wrapped):
                 sells.append((venue,received,list(reversed(path))))
-                details.append((symbol,size,buy))
+                details.append((symbol,size,buy,received))
     second=rpc.quotes(sells,block) if sells else []
     best={}
-    for sell,(symbol,size,buy),returned in zip(sells,details,second):
+    for sell,(symbol,size,buy,received),returned in zip(sells,details,second):
         if not returned:continue
         row={'chain':chain_name,'stable_symbol':cfg['symbol'],'extra_fee_budget':cfg['extra_fee'],'token':labels_by_address[tokens[symbol]],'ca':tokens[symbol],'amount_usdt':float(size),'buy_venue':buy[0],
              'sell_venue':sell[0],'buy_path':buy[2],'sell_path':sell[2],
+             'buy_input_raw':str(buy[1]),'buy_output_raw':str(received),'sell_output_raw':str(returned),
              **cost_result(int(size*unit),returned,gas_budget,decimals=cfg['decimals'])}
         key=(symbol,size,buy[0],sell[0])
         if key not in best or row['output_usdt']>best[key]['output_usdt']:best[key]=row
+    screen_routes(rpc,list(best.values()),block)
     if time.time()-timestamp>30:raise ValueError('本轮报价耗时过长，结果作废')
     check=rpc.batch([('eth_getBlockByNumber',[block,False])])[0]
     if not isinstance(check,dict) or check.get('hash')!=meta.get('hash'):raise ValueError('区块发生重组，结果作废')
@@ -196,7 +244,7 @@ def manual_quote(data):
 
 def notify_candidate(row):
     import wechat_push
-    if not row.get('positive_quote_rechecked') or row.get('buffered_net_usdt',0)<=0:return
+    if not row.get('route_quality_passed') or not row.get('positive_quote_rechecked') or row.get('buffered_net_usdt',0)<=0:return
     wechat_push.enqueue({'type':'arb_candidate','chain':row['chain'],'contract':row['ca'],'token':row['token'],
         'observed_at':row['observed_at'],'positive_quote_rechecked':True,'buffered_net_usdt':row['buffered_net_usdt'],
         'news_title':'套利报价候选 · 请确认金额',

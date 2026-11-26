@@ -6,6 +6,24 @@ def abi(amounts):
     return '0x'+''.join(f'{x:064x}' for x in [32,len(amounts),*amounts])
 
 class QuoteTests(unittest.TestCase):
+    def test_reject_loss_and_thin_routes_without_blacklisting_token(self):
+        class Probe:
+            def __init__(self,values):self.values=values;self.jobs=[]
+            def quotes(self,jobs,block):self.jobs=jobs;return self.values
+        def row(amount=100,out=110):
+            return {'amount_usdt':amount,'output_usdt':out,'buffered_net_usdt':out-amount-1,
+                    'positive_quote':out>amount+1,'buy_input_raw':'100000','buy_output_raw':'200000',
+                    'sell_output_raw':str(out*1000),'buy_venue':'A','sell_venue':'B',
+                    'buy_path':[dq.USDT,dq.WBNB],'sell_path':[dq.WBNB,dq.USDT]}
+        loss=row(out=1);p=Probe([]);dq.screen_routes(p,[loss],'0x123')
+        self.assertFalse(loss['route_quality_passed']);self.assertFalse(p.jobs)
+        shallow=row();dq.screen_routes(Probe([30000,11000]),[shallow],'0x123')
+        self.assertFalse(shallow['positive_quote']);self.assertEqual(shallow['depth_check'],'rejected')
+        good=row();dq.screen_routes(Probe([20000,11000]),[good],'0x123')
+        self.assertTrue(good['route_quality_passed']);self.assertTrue(good['positive_quote'])
+        unavailable=row();dq.screen_routes(Probe([None,11000]),[unavailable],'0x123')
+        self.assertFalse(unavailable['route_quality_passed'])
+        self.assertEqual(unavailable['depth_check'],'unavailable')
     def test_abi_roundtrip_and_invalid_response(self):
         path=[dq.USDT,dq.WBNB]
         encoded=dq.encode_quote(50*10**18,path)
