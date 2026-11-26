@@ -8,6 +8,7 @@ from http.server import ThreadingHTTPServer
 import monitor
 import blockbeats
 import wechat_push
+import dex_quotes
 from cex_market import run as cex_run
 
 
@@ -72,7 +73,7 @@ def main():
     if len(password)<16:raise SystemExit('Set DASHBOARD_PASSWORD with at least 16 characters before deploying')
     config=json.loads((monitor.ROOT/'config.json').read_text(encoding='utf-8'))
     server=ThreadingHTTPServer(('0.0.0.0',int(os.environ.get('PORT','8080'))),handler_for(password))
-    for target,args in [(wechat_push.worker,()),(blockbeats.run,(wechat_push.enqueue,)),
+    for target,args in [(dex_quotes.run,()),(wechat_push.worker,()),(blockbeats.run,(wechat_push.enqueue,)),
                         (cex_run,(monitor.get,monitor.publish,monitor.Detector,config,monitor.STATE,monitor.LOCK)),
                         (monitor.worker,(config,))]:
         threading.Thread(target=target,args=args,daemon=True).start()

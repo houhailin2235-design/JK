@@ -23,3 +23,7 @@ Runtime variables：
 本仓库不包含 API Key、Token、钱包、个人日志或本地运行记录。名单为快照，不能保证涵盖全部新上市资产。
 
 云端两轮采样及微信送达验证完成后，再停止本地监控并取消本地自动启动，避免两端重复推送。
+
+
+## BSC round-trip quote study
+Read-only `/api/dex-quotes`, authenticated by the cloud dashboard. Every 60 seconds quotes 50/100/300 USDT via PancakeSwap V2 and Biswap V2 for WBNB/CAKE/ETH/BTCB, using direct or WBNB paths. Both legs are pinned to the same recent block; chain ID, contract code, decimals and block hash are checked. Router quotes include pool fees and price impact; an additional 0.5% per leg and 900,000 gas times 1.5 at current gas price are budgeted. This is NOT an executor simulation, token-tax check, MEV guarantee or executable profit. No wallet, signing, broadcasts, flash loans or quote notifications. `BSC_QUOTE_RPC_URL` optionally selects an HTTPS BSC RPC. Aggregate in-memory history holds 1440 rounds; bounded `dex-quotes.jsonl` logs rotate at 2MB with two backups. Without persistent storage these reset on redeploy. Source addresses: verified router code on BscScan; token addresses from the PancakeSwap maintained BSC token list. Validation: 32 tests passed and a live read-only round returned 24 routes; all sampled net quotes were negative.

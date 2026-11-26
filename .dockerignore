@@ -18,3 +18,5 @@
 !data/kucoin.json
 !data/asset-exclusions.json
 !data/okx.json
+
+!dex_quotes.py

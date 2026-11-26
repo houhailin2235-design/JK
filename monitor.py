@@ -7,6 +7,7 @@ from spreads import rank_spreads
 from quality import assess,Confirmation,cross_check
 import wechat_push
 import blockbeats
+import dex_quotes
 import logging
 from logging.handlers import RotatingFileHandler
 
@@ -192,6 +193,7 @@ class Handler(BaseHTTPRequestHandler):
             self.push_response(result)
         except Exception as e:self.push_response({'error':str(e) if isinstance(e,ValueError) else '操作失败，请检查本地配置'},400)
     def do_GET(self):
+        if self.path=='/api/dex-quotes':self.push_response(dex_quotes.status());return
         if self.path=='/api/news/status':self.push_response(blockbeats.status());return
         if self.path=='/api/push/status':self.push_response(wechat_push.status());return
         if self.path=='/api/state':
@@ -222,5 +224,6 @@ if __name__=='__main__':
         from cex_market import run as cex_run
         threading.Thread(target=cex_run,args=(get,publish,Detector,config,STATE,LOCK),daemon=True).start()
         threading.Thread(target=worker,args=(config,),daemon=True).start()
+        threading.Thread(target=dex_quotes.run,daemon=True).start()
         print(f'Local dashboard: http://127.0.0.1:{args.port}',flush=True)
         server.serve_forever()
