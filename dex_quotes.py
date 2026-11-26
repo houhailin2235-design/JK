@@ -1,7 +1,9 @@
-"""Read-only BSC round-trip router quotes. Never signs or broadcasts transactions."""
+"""Read-only multi-chain round-trip router quotes. Never signs or broadcasts transactions."""
 import json
 import logging
 import os
+import pathlib
+from asset_filter import excluded
 import re
 import threading
 import time
@@ -16,11 +18,23 @@ TOKENS={'WBNB':WBNB,'CAKE':'0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82',
         'BTCB':'0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c'}
 ROUTERS={'PancakeSwap V2':'0x10ed43c718714eb63d5aa57b78b54704e256024e',
          'Biswap V2':'0x3a6d8ca21d1cf76f653a67577fa0d27453350dd8'}
+CHAINS={
+ 'bsc':{'id':'0x38','rpc':'https://bsc-rpc.publicnode.com','symbol':'USDT','base':USDT,'decimals':18,'wrapped':WBNB,'routers':ROUTERS,'tokens':TOKENS,'extra_fee':0},
+ 'base':{'id':'0x2105','rpc':'https://base-rpc.publicnode.com','symbol':'USDC','base':'0x833589fcd6edb6e08f4c7c32d4f71b54bda02913','decimals':6,'wrapped':'0x4200000000000000000000000000000000000006',
+ 'routers':{'Uniswap V2':'0x4752ba5dbc23f44d87826276bf6fd6b1c372ad24','SushiSwap V2':'0x6bded42c6da8fbf0d2ba55b2fa120c5e0c8d7891'},
+ 'tokens':{'WETH':'0x4200000000000000000000000000000000000006','cbBTC':'0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf','AERO':'0x940181a94a35a4569e4529a3cdfb74e38fd98631'},'extra_fee':1},
+ 'ethereum':{'id':'0x1','rpc':'https://ethereum-rpc.publicnode.com','symbol':'USDC','base':'0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48','decimals':6,'wrapped':'0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
+ 'routers':{'Uniswap V2':'0x7a250d5630b4cf539739df2c5dacb4c659f2488d','SushiSwap V2':'0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f'},
+ 'tokens':{'WETH':'0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2','WBTC':'0x2260fac5e5542a773aa44fbcfedf7c193bc2c599','LINK':'0x514910771af9ca656af840dff83e8264ecf986ca','USDT':'0xdac17f958d2ee523a2206206994597c13d831ec7'},'extra_fee':0}
+}
 SIZES=(50,100,300)
 LOCK=threading.Lock()
-STATE={'chain':'bsc','mode':'quotes_only','execution_enabled':False,'updated':None,
-       'error':'等待首次报价','rows':[],'rounds':0,'positive_quote_samples':0,
+INITIAL={'chain':'bsc','mode':'quotes_only','execution_enabled':False,'updated':None,
+       'error':'等待首次符合条件的信号','rows':[],'rounds':0,'positive_quote_samples':0,
        'confirmed_executable_trades':0,'poll_seconds':60,'history':[]}
+
+STATES={chain:{**INITIAL,'chain':chain,'stable_symbol':cfg['symbol'],'rows':[],'history':[]} for chain,cfg in CHAINS.items()}
+STATE=STATES['bsc']
 
 def encode_quote(amount,path):
     if not 0<amount<2**256 or not 2<=len(path)<=3:raise ValueError('invalid quote')
@@ -37,16 +51,18 @@ def decode_quote(value,amount,path):
     return words[-1]
 
 class RPC:
-    def __init__(self):
-        self.url=os.environ.get('BSC_QUOTE_RPC_URL','https://bsc-rpc.publicnode.com')
+    def __init__(self,chain='bsc'):
+        self.chain=chain
+        self.routers=CHAINS[chain]['routers']
+        self.url=os.environ.get(chain.upper()+'_QUOTE_RPC_URL',CHAINS[chain]['rpc'])
         if not self.url.startswith('https://'):raise ValueError('报价RPC必须使用HTTPS')
     def batch(self,calls):
         # Only a fixed set of read methods can leave this component.
         if any(m not in ('eth_chainId','eth_blockNumber','eth_getBlockByNumber','eth_call','eth_getCode','eth_gasPrice') for m,p in calls):
             raise ValueError('read-only RPC')
         answers=[]
-        for start in range(0,len(calls),12):
-            chunk=calls[start:start+12]
+        for start in range(0,len(calls),50):
+            chunk=calls[start:start+50]
             payload=[{'jsonrpc':'2.0','id':i,'method':m,'params':p} for i,(m,p) in enumerate(chunk)]
             req=urllib.request.Request(self.url,data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','User-Agent':'RadarQuoteStudy/1.0'})
             with urllib.request.urlopen(req,timeout=12) as r:raw=r.read(2_000_001)
@@ -58,94 +74,194 @@ class RPC:
             answers.extend(by_id[i].get('result') if not by_id[i].get('error') else None for i in range(len(chunk)))
         return answers
     def quotes(self,jobs,block):
-        result=self.batch([('eth_call',[{'to':ROUTERS[venue],'data':encode_quote(amount,path)},block]) for venue,amount,path in jobs])
+        result=self.batch([('eth_call',[{'to':self.routers[venue],'data':encode_quote(amount,path),'gas':'0x61a80'},block]) for venue,amount,path in jobs])
         out=[]
         for value,(_,amount,path) in zip(result,jobs):
             try:out.append(decode_quote(value,amount,path))
             except (ValueError,TypeError):out.append(None)
         return out
 
-def paths(token):
-    return [[USDT,token]] if token==WBNB else [[USDT,token],[USDT,WBNB,token]]
+def paths(token,base=USDT,wrapped=WBNB):
+    return [[base,token]] if token==wrapped else [[base,token],[base,wrapped,token]]
 
-def cost_result(amount,out,gas_usdt,slippage_bps=50):
+def cost_result(amount,out,gas_usdt,slippage_bps=50,decimals=18):
     # Router outputs already include pool fees and price impact. Allow 0.5% on EACH leg.
     conservative=out*(10000-slippage_bps)**2//10000**2
-    net=(conservative-amount)/10**18-gas_usdt
-    return {'output_usdt':out/10**18,'gross_usdt':(out-amount)/10**18,
+    net=(conservative-amount)/10**decimals-gas_usdt
+    return {'output_usdt':out/10**decimals,'gross_usdt':(out-amount)/10**decimals,
             'gas_budget_usdt':gas_usdt,'slippage_buffer_bps_per_leg':slippage_bps,
             'buffered_net_usdt':round(net,8),'positive_quote':net>0,
-            'execution_simulated':False,'executable':False}
+            'execution_simulated':False,'executable':False,'token_tax_verified':False}
 
-def collect(rpc):
+def monitored_tokens(chain):
+    root=pathlib.Path(__file__).resolve().parent
+    cfg=json.loads((root/'config.json').read_text(encoding='utf-8'))
+    universe=json.loads((root/'universe.json').read_text(encoding='utf-8'))
+    blocked={(x['chain'],x['address'].lower()) for x in cfg.get('blocked_tokens',[])}
+    found={}
+    for item in cfg['tokens']+universe['candidates']:
+        address=item.get('address','').lower()
+        if item.get('chain')!=chain or not re.fullmatch(r'0x[0-9a-f]{40}',address):continue
+        if (chain,address) in blocked or excluded(item):continue
+        found[address]=item.get('label',address[:10])
+    return [{'address':address,'symbol':symbol} for address,symbol in sorted(found.items()) if address!=CHAINS[chain]['base']]
+
+def collect(rpc,chain_name='bsc',selected=None):
+    cfg=CHAINS[chain_name];routers=cfg['routers'];tokens=cfg['tokens']
+    base=cfg['base'];wrapped=cfg['wrapped'];unit=10**cfg['decimals']
+    if selected is not None:tokens={x['address']:x['address'] for x in selected}
+    labels_by_address={x['address']:x['symbol'] for x in selected} if selected is not None else {v:k for k,v in tokens.items()}
     chain,block,gas=rpc.batch([('eth_chainId',[]),('eth_blockNumber',[]),('eth_gasPrice',[])])
-    if chain!='0x38':raise ValueError('RPC链不符，必须是BSC主网56')
+    if chain!=cfg['id']:raise ValueError('RPC链不符：'+chain_name)
     gas=int(gas,16)
-    meta,*codes=rpc.batch([('eth_getBlockByNumber',[block,False])]+[('eth_getCode',[r,block]) for r in ROUTERS.values()])
+    meta,*codes=rpc.batch([('eth_getBlockByNumber',[block,False])]+[('eth_getCode',[r,block]) for r in routers.values()])
     if not isinstance(meta,dict) or meta.get('number')!=block:raise ValueError('区块响应不符')
     timestamp=int(meta['timestamp'],16)
     if not -5<=time.time()-timestamp<=30:raise ValueError('RPC区块已过期')
     if any(not x or x=='0x' for x in codes):raise ValueError('路由合约不存在')
-    decimals=rpc.batch([('eth_call',[{'to':address,'data':'0x313ce567'},block]) for address in [USDT,*TOKENS.values()]])
-    if any(not isinstance(x,str) or int(x,16)!=18 for x in decimals):raise ValueError('报价代币精度不符')
-    # Native BNB fee conversion, pinned to the same block as both swap legs.
-    price=rpc.quotes([('PancakeSwap V2',10**18,[WBNB,USDT])],block)[0]
-    if not price:raise ValueError('无法获取BNB费用换算报价')
+    decimals=rpc.batch([('eth_call',[{'to':address,'data':'0x313ce567','gas':'0x186a0'},block]) for address in [base,*tokens.values()]])
+    if not isinstance(decimals[0],str) or int(decimals[0],16)!=cfg['decimals']:raise ValueError('报价稳定币精度不符')
+    invalid={address for address,value in zip(tokens.values(),decimals[1:]) if not isinstance(value,str) or not 0<=int(value,16)<=36}
+    tokens={symbol:address for symbol,address in tokens.items() if address not in invalid}
+    # Native coin fee conversion, pinned to the same block as both swap legs.
+    price=rpc.quotes([(next(iter(routers)),10**18,[wrapped,base])],block)[0]
+    if not price:raise ValueError('无法获取原生币费用换算报价')
     # Budget only: no executor exists yet, so this is deliberately NOT eth_estimateGas.
-    gas_budget=gas*900_000/10**18*(price/10**18)*1.5
+    gas_budget=gas*900_000/10**18*(price/unit)*1.5+cfg['extra_fee']
     buys=[];labels=[]
-    for symbol,token in TOKENS.items():
+    for symbol,token in tokens.items():
         for size in SIZES:
-            for venue in ROUTERS:
-                for path in paths(token):
-                    buys.append((venue,size*10**18,path));labels.append((symbol,size))
+            for venue in routers:
+                for path in paths(token,base,wrapped):
+                    buys.append((venue,size*unit,path));labels.append((symbol,size))
     first=rpc.quotes(buys,block)
     sells=[];details=[]
     for buy,(symbol,size),received in zip(buys,labels,first):
         if not received:continue
-        for venue in ROUTERS:
+        for venue in routers:
             if venue==buy[0]:continue
-            for path in paths(TOKENS[symbol]):
+            for path in paths(tokens[symbol],base,wrapped):
                 sells.append((venue,received,list(reversed(path))))
                 details.append((symbol,size,buy))
     second=rpc.quotes(sells,block) if sells else []
     best={}
     for sell,(symbol,size,buy),returned in zip(sells,details,second):
         if not returned:continue
-        row={'token':symbol,'ca':TOKENS[symbol],'amount_usdt':size,'buy_venue':buy[0],
+        row={'chain':chain_name,'stable_symbol':cfg['symbol'],'extra_fee_budget':cfg['extra_fee'],'token':labels_by_address[tokens[symbol]],'ca':tokens[symbol],'amount_usdt':size,'buy_venue':buy[0],
              'sell_venue':sell[0],'buy_path':buy[2],'sell_path':sell[2],
-             **cost_result(size*10**18,returned,gas_budget)}
+             **cost_result(size*unit,returned,gas_budget,decimals=cfg['decimals'])}
         key=(symbol,size,buy[0],sell[0])
         if key not in best or row['output_usdt']>best[key]['output_usdt']:best[key]=row
     if time.time()-timestamp>30:raise ValueError('本轮报价耗时过长，结果作废')
     check=rpc.batch([('eth_getBlockByNumber',[block,False])])[0]
     if not isinstance(check,dict) or check.get('hash')!=meta.get('hash'):raise ValueError('区块发生重组，结果作废')
     rows=sorted(best.values(),key=lambda r:r['buffered_net_usdt'],reverse=True)
-    return {'block':int(block,16),'block_timestamp':timestamp,'rows':rows,
+    checked_at=time.time()
+    for row in rows:row['observed_at']=checked_at;row['block']=int(block,16)
+    covered={r['ca'] for r in rows}
+    coverage=[{'chain':chain_name,'ca':address,'token':label,'checked_at':checked_at,'outcome':'代币精度调用失败' if address in invalid else '有双向报价；未验证真实兑换' if address in covered else '本批V2路径无双向报价'} for address,label in labels_by_address.items()]
+    return {'block':int(block,16),'block_timestamp':timestamp,'rows':rows,'coverage':coverage,
             'attempted_buy_quotes':len(buys),'successful_buy_quotes':sum(x is not None for x in first),
             'attempted_sell_quotes':len(sells),'successful_sell_quotes':sum(x is not None for x in second)}
 
 def status():
-    with LOCK:s=dict(STATE)
-    s['stale']=bool(s['error']) or s['updated'] is None or time.time()-s['updated']>90
-    return s
+    with LOCK:chains={c:dict(s) for c,s in STATES.items()}
+    rows=[]
+    for chain,s in chains.items():
+        s['stale']=bool(s['error']) or s['updated'] is None or time.time()-s['updated']>90
+        rows.extend({**r,'stale':s['stale'] or time.time()-r.get('observed_at',0)>90} for r in s['rows'])
+    return {'mode':'quotes_only','execution_enabled':False,'chains':chains,
+            'rows':sorted(rows,key=lambda r:r['buffered_net_usdt'],reverse=True)}
 
-def run():
-    logger=logging.getLogger('radar.dex_quotes');logger.setLevel(logging.INFO);logger.propagate=False
+def candidate_signals(chain,catalog,snapshot,now):
+    known={x['address'] for x in catalog};signals={}
+    def add(address,reason):
+        if address in known:signals.setdefault(address,set()).add(reason)
+    for p in snapshot.get('pairs',[]):
+        if p.get('chain')!=chain or not p.get('eligible') or now-p.get('observed_at',0)>60:continue
+        gap=p.get('indicative_spread_percent')
+        if isinstance(gap,(int,float)) and abs(gap)>25:add(p.get('contract','').lower(),'spread')
+    for alert in snapshot.get('alerts',[]):
+        if not 0<=now-alert.get('time',0)<=90 or alert.get('drop_percent',0)<25:continue
+        if alert.get('type') not in ('cex_crash','multi_pool_price_drop'):continue
+        if alert.get('chain')==chain:add(alert.get('contract','').lower(),'crash')
+        elif alert.get('type')=='cex_crash':
+            # Symbol matching only nominates a read-only probe; it never verifies asset identity.
+            for token in catalog:
+                if token['symbol'].upper()==alert.get('token','').upper():add(token['address'],'crash')
+    return signals
+
+class SignalGate:
+    def __init__(self):self.active=set();self.last={}
+    def update(self,signals,now):
+        current={(address,reason) for address,reasons in signals.items() for reason in reasons}
+        fresh={address for address,reason in current-self.active if now-self.last.get(address,-1e20)>=600}
+        for address in fresh:self.last[address]=now
+        self.active=current
+        return fresh
+
+def run_chain(chain,source):
+    state=STATES[chain];latest={};coverage={};pending={};gate=SignalGate();catalog=[];loaded=0;last_query=0;confirm={}
+    logger=logging.getLogger('radar.dex_quotes.'+chain);logger.setLevel(logging.INFO);logger.propagate=False
     if not logger.handlers:
-        logger.addHandler(RotatingFileHandler(STATE_ROOT/'dex-quotes.jsonl',maxBytes=2_000_000,backupCount=2,encoding='utf-8'))
+        logger.addHandler(RotatingFileHandler(STATE_ROOT/('dex-quotes-'+chain+'.jsonl'),maxBytes=2_000_000,backupCount=2,encoding='utf-8'))
     while True:
-        start=time.monotonic()
+        batch=[]
         try:
-            sample=collect(RPC());now=time.time();positive=sum(r['positive_quote'] for r in sample['rows'])
-            summary={'time':now,'block':sample['block'],'routes':len(sample['rows']),'positive_quotes':positive,
-                     'best_buffered_net_usdt':sample['rows'][0]['buffered_net_usdt'] if sample['rows'] else None}
+            now=time.time()
+            if now-loaded>=60:
+                catalog=monitored_tokens(chain);loaded=now
+                active={x['address'] for x in catalog}
+                latest={k:r for k,r in latest.items() if r['ca'] in active}
+                coverage={k:r for k,r in coverage.items() if k in active}
+                pending={k:v for k,v in pending.items() if k in active}
+            signals=candidate_signals(chain,catalog,source(),now)
+            by_address={x['address']:x for x in catalog}
+            for address in gate.update(signals,now):
+                pending[address]=now
+                confirm.pop(address,None)
+            # Expired signals must not cause delayed network requests.
+            pending={a:t for a,t in pending.items() if a in signals and now-t<=90}
             with LOCK:
-                history=(STATE['history']+[summary])[-1440:]
-                STATE.update(**sample,updated=now,error='' if sample['rows'] else '路由没有可用双向报价',
-                             rounds=STATE['rounds']+1,positive_quote_samples=STATE['positive_quote_samples']+positive,history=history)
-            logger.info(json.dumps({'time':now,**sample},ensure_ascii=False))
+                state.update(total_tokens=len(catalog),checked_tokens=len(coverage),pending_tokens=len(pending),
+                    coverage=[coverage.get(x['address'],{'chain':chain,'ca':x['address'],'token':x['symbol'],'checked_at':None,'outcome':'等待暴跌≥25%或参考价差>25%'}) for x in catalog])
+            if not pending or now-last_query<15:
+                time.sleep(5);continue
+            batch=[by_address[a] for a in list(pending)[:12]]
+            for item in batch:pending.pop(item['address'],None)
+            last_query=now
+            sample=collect(RPC(chain),chain,batch);now=time.time();batch_rows=sample['rows']
+            for row in batch_rows:
+                prior=confirm.get(row['ca'])
+                row['positive_quote_rechecked']=bool(row['positive_quote'] and prior and row['block']>prior['block'] and (row['amount_usdt'],row['buy_venue'],row['sell_venue']) in prior['routes'])
+            for address in {r['ca'] for r in batch_rows if r['positive_quote']}:
+                if address not in confirm:
+                    confirm[address]={'block':sample['block'],'routes':{(r['amount_usdt'],r['buy_venue'],r['sell_venue']) for r in batch_rows if r['ca']==address and r['positive_quote']}}
+                    pending[address]=now  # One follow-up quote only; still never executes.
+            addresses={x['address'] for x in batch}
+            latest={k:r for k,r in latest.items() if r['ca'] not in addresses}
+            for row in batch_rows:
+                row['trigger']=' / '.join(sorted(signals.get(row['ca'],[])))
+                latest[(row['ca'],row['amount_usdt'],row['buy_venue'],row['sell_venue'])]=row
+            for item in sample['coverage']:coverage[item['ca']]=item
+            positive=sum(r['positive_quote'] for r in batch_rows)
+            summary={'time':now,'block':sample['block'],'routes':len(batch_rows),'positive_quotes':positive,
+                     'best_buffered_net_usdt':max(r['buffered_net_usdt'] for r in batch_rows) if batch_rows else None}
+            sample['rows']=list(latest.values())
+            sample['coverage']=[coverage.get(x['address'],{'chain':chain,'ca':x['address'],'token':x['symbol'],'checked_at':None,'outcome':'等待初筛信号'}) for x in catalog]
+            with LOCK:
+                state.update(**sample,updated=now,error='',checked_tokens=len(coverage),batch_tokens=len(batch),
+                             rounds=state['rounds']+1,positive_quote_samples=state['positive_quote_samples']+positive,
+                             history=(state['history']+[summary])[-1440:])
+            logger.info(json.dumps({'time':now,'chain':chain,'block':sample['block'],'rows':batch_rows,'checked_addresses':[x['address'] for x in batch]},ensure_ascii=False))
         except Exception as e:
-            # RPC URLs may contain API keys: never publish exception messages.
-            with LOCK:STATE['error']=str(e) if isinstance(e,ValueError) and str(e).startswith(('RPC','区块','路由','报价','无法','本轮')) else 'RPC报价失败，保留上轮结果；请检查连接或额度'
-        time.sleep(max(1,60-(time.monotonic()-start)))
+            now=time.time()
+            for item in batch:coverage[item['address']]={'chain':chain,'ca':item['address'],'token':item['symbol'],'checked_at':now,'outcome':'本次RPC失败 / 超时，未取得有效报价'}
+            with LOCK:state['error']=str(e) if isinstance(e,ValueError) and str(e).startswith(('RPC','区块','路由','报价','无法','本轮')) else 'RPC报价失败；本信号已去重，等待下一次新信号'
+        time.sleep(5)
+
+def run(source=None):
+    if source is None:source=lambda:{'pairs':[],'alerts':[]}
+    workers=[threading.Thread(target=run_chain,args=(chain,source),daemon=True) for chain in CHAINS]
+    for worker in workers:worker.start()
+    for worker in workers:worker.join()

@@ -173,6 +173,9 @@ def worker(config):
             with LOCK: STATE['errors']=[str(e)]
         time.sleep(max(1,config['poll_seconds']-(time.monotonic()-start)))
 
+def quote_inputs():
+    with LOCK:return {'pairs':list(STATE.get('pairs',[])),'alerts':list(STATE.get('alerts',[]))}
+
 class Handler(BaseHTTPRequestHandler):
     def push_response(self,value,code=200):
         body=json.dumps(value,ensure_ascii=False).encode()
@@ -224,6 +227,6 @@ if __name__=='__main__':
         from cex_market import run as cex_run
         threading.Thread(target=cex_run,args=(get,publish,Detector,config,STATE,LOCK),daemon=True).start()
         threading.Thread(target=worker,args=(config,),daemon=True).start()
-        threading.Thread(target=dex_quotes.run,daemon=True).start()
+        threading.Thread(target=dex_quotes.run,args=(quote_inputs,),daemon=True).start()
         print(f'Local dashboard: http://127.0.0.1:{args.port}',flush=True)
         server.serve_forever()

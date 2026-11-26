@@ -21,6 +21,42 @@ class QuoteTests(unittest.TestCase):
         self.assertFalse(row['executable'])
         self.assertFalse(row['execution_simulated'])
         self.assertTrue(dq.cost_result(100*10**18,105*10**18,0.1)['positive_quote'])
+        a=dq.cost_result(100*10**18,105*10**18,0.1)
+        b=dq.cost_result(100*10**6,105*10**6,0.1,decimals=6)
+        self.assertEqual(a['buffered_net_usdt'],b['buffered_net_usdt'])
+
+    def test_chain_failures_are_isolated(self):
+        with patch.dict(dq.STATES['base'],{'error':'RPC失败','updated':dq.time.time()}):
+            s=dq.status()
+            self.assertTrue(s['chains']['base']['stale'])
+            self.assertFalse(s['execution_enabled'])
+            self.assertEqual(set(s['chains']),{'base','bsc','ethereum'})
+
+    def test_all_monitored_tokens_are_candidates_by_contract(self):
+        for chain in dq.CHAINS:
+            tokens=dq.monitored_tokens(chain)
+            self.assertGreater(len(tokens),50)
+            self.assertEqual(len(tokens),len({x['address'] for x in tokens}))
+            self.assertNotIn(dq.CHAINS[chain]['base'],{x['address'] for x in tokens})
+
+    def test_trigger_first_crossing_cooldown_and_stale_filter(self):
+        catalog=[{'address':dq.WBNB,'symbol':'WBNB'}]
+        pair={'chain':'bsc','contract':dq.WBNB,'eligible':True,'observed_at':1000,'indicative_spread_percent':25}
+        self.assertFalse(dq.candidate_signals('bsc',catalog,{'pairs':[pair]},1000))
+        pair['indicative_spread_percent']=26
+        signals=dq.candidate_signals('bsc',catalog,{'pairs':[pair]},1000)
+        gate=dq.SignalGate()
+        self.assertEqual(gate.update(signals,1000),{dq.WBNB})
+        self.assertEqual(gate.update(signals,1700),set())
+        gate.update({},1701)
+        self.assertEqual(gate.update(signals,1702),{dq.WBNB})
+        gate.update({},1703)
+        self.assertEqual(gate.update(signals,1704),set())
+        self.assertFalse(dq.candidate_signals('bsc',catalog,{'pairs':[pair]},1100))
+        event={'type':'cex_crash','chain':'OKX','token':'WBNB','drop_percent':25,'time':1000}
+        self.assertIn(dq.WBNB,dq.candidate_signals('bsc',catalog,{'alerts':[event]},1000))
+        event['type']='liquidity_drop'
+        self.assertFalse(dq.candidate_signals('bsc',catalog,{'alerts':[event]},1000))
 
     def test_no_write_rpc_methods(self):
         with self.assertRaises(ValueError):dq.RPC().batch([('eth_sendRawTransaction',['0x'])])
