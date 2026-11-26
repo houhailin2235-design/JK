@@ -24,8 +24,20 @@ def is_theft_news(title):
     title=re.sub(r'(?:并未|没有|未曾|未|未发现|并无|尚无)(?:发生|出现|资金|资产|任何|遭到|遭|被)*?(?:被盗|遭盗|失窃|盗取|盗走)', '', title)
     return bool(re.search(r'被盗|遭盗|失窃|盗取|盗走|遭窃|\b(?:stolen|theft|stole)\b',title,re.I))
 
+def is_alpha_listing_news(title):
+    """Headline announcements only; scheduled listings count, rumors do not."""
+    platform=r'(?:\bbinance\s*alpha(?![a-z0-9])|币安\s*alpha(?![a-z0-9]))'
+    for clause in re.split(r'[，,。；;！!？?\n]',title):
+        if not re.search(platform,clause,re.I):continue
+        if re.search(r'传闻|网传|谣言|辟谣|否认|取消|下架|移除|暂停|不会|未上线|尚未|未计划|没有计划|可能|或将|猜测|预测|此前|之前|曾入选|回顾|\b(?:rumou?rs?|denies?|cancel\w*|delist\w*|may|might|could|not)\b',clause,re.I):continue
+        if re.search(r'(?:上线|推出|新增).{0,6}(?:功能|积分规则|交易竞赛|活动|工具|界面)|教程|攻略',clause):continue
+        if re.search(r'\b(?:features?|tools?|campaigns?|tutorials?|guides?|points?\s+rules?)\b',clause,re.I):continue
+        if re.search(platform+r'.{0,70}(?:上线|上架|首发|新增|上市|\b(?:list(?:s|ed|ing)?|add(?:s|ed)?|launch(?:es|ed|ing)?)\b)',clause,re.I):return True
+        if re.search(r'(?:上线|上架|入选|登陆|登录|\b(?:list(?:s|ed|ing)?|launch(?:es|ed|ing)?)\b).{0,50}'+platform,clause,re.I):return True
+    return False
+
 def should_push(item,mode):
-    if mode=='crash':return is_crash_news(item['title']) or is_theft_news(item['title'])
+    if mode=='crash':return is_crash_news(item['title']) or is_theft_news(item['title']) or is_alpha_listing_news(item['title'])
     if mode=='risk':return item.get('risk',False)
     return mode=='all'
 

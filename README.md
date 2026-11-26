@@ -59,3 +59,8 @@ Validation: 37 Python checks (the local HTTP test needs loopback network access)
 ### Quote-route quality filter
 
 The default arbitrage list now contains only fresh positive quotes that passed a same-block, one-tenth-size capacity probe on both legs. Routes losing over 5% of principal, not covering fee budgets, missing complete capacity probes, or showing over 5% deterioration in either leg's output-per-input rate go into failed records. Stale records have their own view; all records remain inspectable. No token-wide blacklist is created. This probe is not reserve verification, token-tax testing or real execution simulation. Quality rejection also prevents candidate push and its follow-up quote. 38 Python checks and the UI category/syntax checks pass.
+
+
+### Binance Alpha news alerts
+
+The existing selected-news mode (`crash`, retained for environment compatibility) now also includes Binance Alpha / 币安 Alpha token-listing announcement headlines, including announced scheduled listings. It uses headline matching and filters rumors, denials, delistings, historical mentions and feature/campaign updates. Body-only historical mentions do not trigger. Existing 30-second polling, service-account delivery, per-news-ID deduplication and first-start baseline remain. This is a BlockBeats news filter, not a direct Binance announcement feed. News/push tests include positive and negative Alpha examples.
