@@ -21,6 +21,9 @@ class QuoteTests(unittest.TestCase):
         self.assertFalse(shallow['positive_quote']);self.assertEqual(shallow['depth_check'],'rejected')
         good=row();dq.screen_routes(Probe([20000,11000]),[good],'0x123')
         self.assertTrue(good['route_quality_passed']);self.assertTrue(good['positive_quote'])
+        boundary=row();boundary['buy_output_raw']='190000'
+        dq.screen_routes(Probe([20000,11000]),[boundary],'0x123')
+        self.assertTrue(boundary['route_quality_passed'],'exactly 5% is permitted')
         unavailable=row();dq.screen_routes(Probe([None,11000]),[unavailable],'0x123')
         self.assertFalse(unavailable['route_quality_passed'])
         self.assertEqual(unavailable['depth_check'],'unavailable')

@@ -122,18 +122,19 @@ def screen_routes(rpc,rows,block):
         small=probes[i*2:i*2+2]
         actual=[(int(row['buy_input_raw']),int(row['buy_output_raw'])),
                 (int(row['buy_output_raw']),int(row['sell_output_raw']))]
-        impacts=[]
+        impacts=[];exceeded=[]
         for j,(amount,out) in enumerate(actual):
             probe=small[j] if len(small)>j else None
             probe_in=jobs[i*2+j][1]
             if not probe or amount<=probe_in:
-                impacts.append(None)
+                impacts.append(None);exceeded.append(False)
             else:
-                impacts.append(max(0.,100*(1-out*probe_in/(probe*amount))))
+                impacts.append(round(max(0.,100*(1-out*probe_in/(probe*amount))),6))
+                exceeded.append(out*probe_in*100<probe*amount*95)
         row['leg_price_impact_percent']=impacts
         if any(x is None for x in impacts):
             row['depth_check']='unavailable';row['rejection_reason']='路径容量检查未取得完整报价'
-        elif any(x>5 for x in impacts):
+        elif any(exceeded):
             row['depth_check']='rejected';row['rejection_reason']='单腿报价价格冲击超过5%，当前金额不适用'
         else:
             row['depth_check']='passed';row['route_quality_passed']=True;row['rejection_reason']=''
