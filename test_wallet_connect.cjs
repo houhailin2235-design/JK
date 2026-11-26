@@ -15,7 +15,8 @@ element('wallet-expected').value=owner;element('wallet-network').value='0x38';el
 const methods=[],handlers={};
 let currentOwner=owner;
 const provider={on(e,fn){handlers[e]=fn;},removeListener(e){delete handlers[e];},async request({method}){methods.push(method);switch(method){case 'eth_requestAccounts':case 'eth_accounts':return [currentOwner];case 'eth_chainId':return '0x38';case 'eth_getBalance':return '0xde0b6b3a7640000';case 'eth_call':return '0x5f5e100';case 'eth_gasPrice':return '0x3b9aca00';case 'eth_estimateGas':return '0x7a120';default:throw Error('unexpected method '+method);}}};
-const context={console,Event:class{constructor(type){this.type=type;}},document:{getElementById:element,createElement(){return {value:'',textContent:''};}},okxwallet:provider,addEventListener(){},dispatchEvent(){},fetch:async()=>({ok:true,json:async()=>({artifact,chains:{'0x38':cfg}})})};
+const storage=new Map();
+const context={console,Date,localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},Event:class{constructor(type){this.type=type;}},document:{getElementById:element,createElement(){return {value:'',textContent:''};}},okxwallet:provider,addEventListener(){},dispatchEvent(){},fetch:async()=>({ok:true,json:async()=>({artifact,chains:{'0x38':cfg}})})};
 vm.runInNewContext(fs.readFileSync('wallet-connect.js','utf8'),context);
 (async()=>{
  assert.equal(methods.length,0,'loading must not request account access');
@@ -31,6 +32,39 @@ vm.runInNewContext(fs.readFileSync('wallet-connect.js','utf8'),context);
  assert.ok(element('wallet-status').textContent.includes('不一致'));
  assert.ok(element('wallet-estimate-result').textContent.includes('尚未估算'));
  assert.ok(methods.every(m=>!m.includes('sendTransaction')&&!m.includes('sign')));
+ // Deployment requires a fresh reviewed estimate and matching wallet at send time.
+ const originalRequest=provider.request.bind(provider);
+ let sent=0,sendTx;
+ provider.request=async args=>{if(args.method==='eth_sendTransaction'){sent++;sendTx=args.params[0];return '0x'+'a'.repeat(64);}return originalRequest(args);};
+ currentOwner=owner;await handlers.accountsChanged();
+ await element('wallet-deploy').onclick();assert.equal(sent,0,'must not deploy without estimate');
+ await element('wallet-estimate').onclick();assert.equal(element('wallet-deploy').disabled,false);
+ currentOwner=asset;await element('wallet-deploy').onclick();assert.equal(sent,0,'account race must block sending');
+ currentOwner=owner;await element('wallet-estimate').onclick();
+ await element('wallet-deploy').onclick();assert.equal(sent,1);
+ assert.equal(sendTx.value,'0x0');assert.equal(sendTx.to,undefined);assert.equal(sendTx.data,data);assert.equal(sendTx.chainId,'0x38');
+ await element('wallet-estimate').onclick();assert.equal(element('wallet-deploy').disabled,true);
+ await element('wallet-deploy').onclick();assert.equal(sent,1,'must block duplicate pending deployment');
+ // A receipt is required; a transaction hash alone must not become a deployed address.
+ assert.ok(!element('wallet-deployment-status').textContent.includes('部署已核验'));
+ const target='0x5555555555555555555555555555555555555555',blockHash='0x'+'b'.repeat(64);
+ let receiptStatus='0x1',height='0xb',wrongOwner=false;
+ provider.request=async args=>{
+  if(args.method==='eth_getTransactionReceipt')return {status:receiptStatus,contractAddress:target,blockNumber:'0xa',blockHash};
+  if(args.method==='eth_getTransactionByHash')return {from:owner,to:null,value:'0x0',input:data};
+  if(args.method==='eth_getCode')return '0x6000';
+  if(args.method==='eth_getBlockByNumber')return {hash:blockHash};
+  if(args.method==='eth_blockNumber')return height;
+  if(args.method==='eth_call'&&args.params[0].to===target){const values={'0x8da5cb5b':wrongOwner?asset:owner,'0x38d52e0f':asset,'0x65434da7':cfg.routers[0],'0x46b5f0d6':cfg.routers[1],'0xd08b18b5':'0x5f5e100'};return '0x'+BigInt(values[args.params[0].data]).toString(16).padStart(64,'0');}
+  return originalRequest(args);
+ };
+ wrongOwner=true;await element('wallet-check-deployment').onclick();
+ assert.ok(!element('wallet-deployment-status').textContent.includes('部署已核验'),'wrong owner must fail verification');
+ wrongOwner=false;height='0xa';await element('wallet-check-deployment').onclick();
+ assert.ok(!element('wallet-deployment-status').textContent.includes('部署已核验'),'one block is insufficient');
+ height='0xb';await element('wallet-check-deployment').onclick();
+ assert.ok(element('wallet-deployment-status').textContent.includes('部署已核验'));
+ assert.ok(element('wallet-status').textContent.includes('实盘仍关闭'));
  element('wallet-disconnect').onclick();assert.ok(element('wallet-status').textContent.includes('已断开'));
- console.log('wallet connection, address guard, estimate invalidation and read-only tests passed');
+ console.log('wallet connection, deployment guards, zero-value send and duplicate protection tests passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
