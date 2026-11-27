@@ -28,7 +28,7 @@ def handler_for(password):
         def do_GET(self):
             if self.path=='/healthz':
                 apps=flap_apps.status()
-                self.push_response({'ok':True,'features':['flap_apps_v1','gate_review_v1'],'flap_apps_ready':apps['updated'] is not None and not apps['error']});return
+                self.push_response({'ok':True,'features':['flap_apps_v1','gate_review_v1','asset_batch_v1'],'flap_apps_ready':apps['updated'] is not None and not apps['error']});return
             if not self.authenticated():return
             if self.path=='/':
                 page=(monitor.ROOT/'index.html').read_text(encoding='utf-8')

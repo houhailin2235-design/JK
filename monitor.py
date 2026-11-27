@@ -200,6 +200,7 @@ class Handler(BaseHTTPRequestHandler):
             self.push_response(result)
         except Exception as e:self.push_response({'error':str(e) if isinstance(e,ValueError) else '操作失败，请检查本地配置'},400)
     def do_GET(self):
+        if self.path=='/api/arb/assets':self.push_response(json.loads((ROOT/'data/arb-assets.json').read_text(encoding='utf-8')));return
         if self.path=='/arbitrage-guide.md':
             body=(ROOT/'ARBITRAGE_GUIDE.md').read_bytes()
             self.send_response(200);self.send_header('Content-Type','text/markdown; charset=utf-8');self.send_header('Content-Disposition','attachment; filename="arbitrage-guide.md"');self.end_headers();self.wfile.write(body);return

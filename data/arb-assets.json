@@ -1,0 +1,277 @@
+{
+  "added_on": "2026-11-28",
+  "contracts": [
+    {
+      "chain": "ethereum",
+      "address": "0xbe9895146f7af43049ca1c1ae358b0541ea49704",
+      "label": "cbETH",
+      "decimals": 18,
+      "source": "https://tokens.uniswap.org",
+      "identity_status": "token_list_contract_only_not_exchange_verified",
+      "category": "staking",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x6b175474e89094c44da98b954eedeac495271d0f",
+      "label": "DAI",
+      "decimals": 18,
+      "source": "https://tokens.uniswap.org",
+      "identity_status": "token_list_contract_only_not_exchange_verified",
+      "category": "stablecoin",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x1abaea1f7c830bd89acc67ec4af516284b1bc33c",
+      "label": "EURC",
+      "decimals": 6,
+      "source": "https://tokens.uniswap.org",
+      "identity_status": "token_list_contract_only_not_exchange_verified",
+      "category": "stablecoin",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "label": "USDC",
+      "decimals": 6,
+      "source": "https://tokens.uniswap.org",
+      "identity_status": "token_list_contract_only_not_exchange_verified",
+      "category": "stablecoin",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xdc035d45d973e3ec169d2276ddab16f1e407384f",
+      "label": "USDS",
+      "decimals": 18,
+      "source": "https://tokens.uniswap.org",
+      "identity_status": "token_list_contract_only_not_exchange_verified",
+      "category": "stablecoin",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+      "label": "USDT",
+      "decimals": 6,
+      "source": "https://tokens.uniswap.org",
+      "identity_status": "token_list_contract_only_not_exchange_verified",
+      "category": "stablecoin",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "bsc",
+      "address": "0x1af3f329e8be154074d8769d1ffa4ee058b1dbc3",
+      "label": "DAI",
+      "decimals": 18,
+      "source": "https://tokens.uniswap.org",
+      "identity_status": "token_list_contract_only_not_exchange_verified",
+      "category": "stablecoin",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "asset_note": "链特定/锚定版本；不代表发行方原生资产或可直接赎回",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "bsc",
+      "address": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+      "label": "USDC",
+      "decimals": 18,
+      "source": "https://tokens.uniswap.org",
+      "identity_status": "token_list_contract_only_not_exchange_verified",
+      "category": "stablecoin",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "asset_note": "链特定/锚定版本；不代表发行方原生资产或可直接赎回",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "bsc",
+      "address": "0x55d398326f99059ff775485246999027b3197955",
+      "label": "USDT",
+      "decimals": 18,
+      "source": "https://tokens.uniswap.org",
+      "identity_status": "token_list_contract_only_not_exchange_verified",
+      "category": "stablecoin",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "asset_note": "链特定/锚定版本；不代表发行方原生资产或可直接赎回",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "base",
+      "address": "0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22",
+      "label": "cbETH",
+      "decimals": 18,
+      "source": "https://tokens.uniswap.org",
+      "identity_status": "token_list_contract_only_not_exchange_verified",
+      "category": "staking",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "base",
+      "address": "0x50c5725949a6f0c72e6c4a641f24049a917db0cb",
+      "label": "DAI",
+      "decimals": 18,
+      "source": "https://tokens.uniswap.org",
+      "identity_status": "token_list_contract_only_not_exchange_verified",
+      "category": "stablecoin",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "base",
+      "address": "0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42",
+      "label": "EURC",
+      "decimals": 6,
+      "source": "https://tokens.uniswap.org",
+      "identity_status": "token_list_contract_only_not_exchange_verified",
+      "category": "stablecoin",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "base",
+      "address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "label": "USDC",
+      "decimals": 6,
+      "source": "https://tokens.uniswap.org",
+      "identity_status": "token_list_contract_only_not_exchange_verified",
+      "category": "stablecoin",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "base",
+      "address": "0xfde4c96c8593536e31f229ea8f37b2ada2699bb2",
+      "label": "USDT",
+      "decimals": 6,
+      "source": "https://tokens.uniswap.org",
+      "identity_status": "token_list_contract_only_not_exchange_verified",
+      "category": "stablecoin",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "asset_note": "桥接版本；不能假定与其他链USDT可直接互换",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xae7ab96520de3a18e5e111b5eaab095312d7fe84",
+      "label": "stETH",
+      "decimals": 18,
+      "source": "https://docs.lido.fi/deployed-contracts/",
+      "identity_status": "official_contract_only_not_exchange_verified",
+      "category": "staking",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0",
+      "label": "wstETH",
+      "decimals": 18,
+      "source": "https://docs.lido.fi/deployed-contracts/",
+      "identity_status": "official_contract_only_not_exchange_verified",
+      "category": "staking",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xae78736cd615f374d3085123a210448e74fc6393",
+      "label": "rETH",
+      "decimals": 18,
+      "source": "https://docs.rocketpool.net/en/protocol/contracts-integrations",
+      "identity_status": "official_contract_only_not_exchange_verified",
+      "category": "staking",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x4c9edd5852cd905f086c759e8383e09bff1e68b3",
+      "label": "USDe",
+      "decimals": 18,
+      "source": "https://docs.ethena.fi/technical-design/key-addresses",
+      "identity_status": "official_contract_only_not_exchange_verified",
+      "category": "synthetic_dollar",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "ethereum",
+      "address": "0x9d39a5de30e57443bff2a8307a4256c8797a3497",
+      "label": "sUSDe",
+      "decimals": 18,
+      "source": "https://docs.ethena.fi/technical-design/key-addresses",
+      "identity_status": "official_contract_only_not_exchange_verified",
+      "category": "staking_dollar",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "code_and_decimals_checked": true
+    },
+    {
+      "chain": "ethereum",
+      "address": "0xf939e0a03fb07f59a73314e73794be0e57ac1b4e",
+      "label": "crvUSD",
+      "decimals": 18,
+      "source": "https://docs.curve.finance/developer/crvusd",
+      "identity_status": "official_contract_only_not_exchange_verified",
+      "category": "stablecoin",
+      "route_status": "official_route_not_connected",
+      "added_on": "2026-11-28",
+      "code_and_decimals_checked": true
+    }
+  ],
+  "new_unique_contracts": 19,
+  "scope": "目录与行情监控；不代表官方兑换、充提、成交或自动执行已接通",
+  "routes": [
+    {
+      "name": "Lido wstETH ↔ stETH",
+      "status": "待接入官方换算报价",
+      "note": "按合约当前换算率计算，不能按1:1比较；与stETH排队赎回ETH是不同路线。",
+      "source": "https://docs.lido.fi/contracts/wsteth/"
+    },
+    {
+      "name": "Lido stETH / wstETH → ETH",
+      "status": "待接入队列与到账状态",
+      "note": "需要申请和领取，可能排队；不能当作即时原子套利。",
+      "source": "https://lido.fi/how-lido-works/withdrawals"
+    },
+    {
+      "name": "Rocket Pool rETH → ETH",
+      "status": "待接入兑换率与可用容量",
+      "note": "需检查官方实际可兑换量，不能只拿账面汇率计算利润。",
+      "source": "https://docs.rocketpool.net/en/protocol/contracts-integrations"
+    },
+    {
+      "name": "Ethena sUSDe → USDe / USDe赎回",
+      "status": "待接入冷却期、权限与额度",
+      "note": "不同操作的准入和等待条件分别核实，不假设所有用户可立即赎回。",
+      "source": "https://docs.ethena.fi/technical-design/key-addresses"
+    }
+  ]
+}

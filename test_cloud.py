@@ -20,7 +20,7 @@ class CloudChecks(unittest.TestCase):
                 quote_status=json.load(response)
                 self.assertFalse(quote_status['execution_enabled'])
                 self.assertEqual(set(quote_status['chains']),{'bsc','base','ethereum'})
-            for path in ['/api/arb/wallet-config','/wallet-connect.js','/api/flap-apps/status','/arbitrage-guide.md']:
+            for path in ['/api/arb/wallet-config','/wallet-connect.js','/api/flap-apps/status','/arbitrage-guide.md','/api/arb/assets']:
                 with self.assertRaises(urllib.error.HTTPError) as private:
                     opener.open(root+path)
                 self.assertEqual(private.exception.code,401);private.exception.close()
@@ -30,6 +30,10 @@ class CloudChecks(unittest.TestCase):
                 self.assertNotIn('items',health)
             with opener.open(urllib.request.Request(root+'/api/flap-apps/status',headers={'Authorization':auth})) as response:
                 self.assertEqual(json.load(response)['poll_seconds'],60)
+            with opener.open(urllib.request.Request(root+'/api/arb/assets',headers={'Authorization':auth})) as response:
+                assets=json.load(response)
+                self.assertEqual(len(assets['contracts']),20)
+                self.assertTrue(all(t['route_status']=='official_route_not_connected' for t in assets['contracts']))
             with patch('gate_review.review',return_value={'execution_enabled':False}) as review:
                 with self.assertRaises(urllib.error.HTTPError) as bad_origin:
                     opener.open(urllib.request.Request(root+'/api/gate/review',data=b'{}',headers={**headers,'Origin':'https://evil.example'}))
