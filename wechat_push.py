@@ -102,7 +102,7 @@ def channels_for(a):
 def send_market(a):
     is_spread=a.get('type') in ('indicative_spread','extreme_spread')
     amount=a.get('indicative_spread_percent',0) if is_spread else a.get('drop_percent',0)
-    title=f"{'极端价差⚠待核实' if a.get('type')=='extreme_spread' else '价差' if is_spread else '下跌'} {amount:.2f}% · {a.get('token','')}"
+    title=f"{'极端价差⚠待核实' if a.get('type')=='extreme_spread' else '参考价差（非净利润）' if is_spread else '下跌'} {amount:.2f}% · {a.get('token','')}"
     content='\n'.join([f"链：{a.get('chain','')}",f"平台：{a.get('best_venue','')} {a.get('cex','')}",f"{'参考价差' if is_spread else '监测跌幅'}：{amount}%",f"类型：{a.get('verification',a.get('type',''))}",f"CA：{a.get('contract','')}",f"池子：{a.get('url','')}",'仅参考价差，未扣成本及验证充提路线。'])
     errors=[]
     for i,channel in enumerate(channels_for(a)):

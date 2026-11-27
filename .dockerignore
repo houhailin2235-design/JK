@@ -25,3 +25,6 @@
 !executor-artifact.json
 
 !flap_apps.py
+
+!gate_review.py
+!ARBITRAGE_GUIDE.md

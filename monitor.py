@@ -8,6 +8,7 @@ from quality import assess,Confirmation,cross_check
 import wechat_push
 import blockbeats
 import flap_apps
+import gate_review
 import dex_quotes
 import logging
 from logging.handlers import RotatingFileHandler
@@ -190,6 +191,7 @@ class Handler(BaseHTTPRequestHandler):
             if not 0<length<=4096:raise ValueError('请求长度无效')
             data=json.loads(self.rfile.read(length))
             if self.path=='/api/arb/quote':result=dex_quotes.manual_quote(data)
+            elif self.path=='/api/gate/review':result=gate_review.review(data)
             elif self.path=='/api/push/config':wechat_push.save(data.get('token',''),data.get('enabled',False));result=wechat_push.status()
             elif self.path=='/api/news/config':
                 blockbeats.save(data.get('api_key',''),data.get('enabled',False),data.get('mode','all'));result=blockbeats.status()
@@ -198,6 +200,9 @@ class Handler(BaseHTTPRequestHandler):
             self.push_response(result)
         except Exception as e:self.push_response({'error':str(e) if isinstance(e,ValueError) else '操作失败，请检查本地配置'},400)
     def do_GET(self):
+        if self.path=='/arbitrage-guide.md':
+            body=(ROOT/'ARBITRAGE_GUIDE.md').read_bytes()
+            self.send_response(200);self.send_header('Content-Type','text/markdown; charset=utf-8');self.send_header('Content-Disposition','attachment; filename="arbitrage-guide.md"');self.end_headers();self.wfile.write(body);return
         if self.path=='/api/flap-apps/status':self.push_response(flap_apps.status());return
         if self.path=='/api/arb/wallet-config':
             artifact=json.loads((ROOT/'executor-artifact.json').read_text(encoding='utf-8'))

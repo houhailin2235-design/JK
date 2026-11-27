@@ -8,6 +8,7 @@ from http.server import ThreadingHTTPServer
 import monitor
 import blockbeats
 import flap_apps
+import gate_review
 import wechat_push
 import dex_quotes
 from cex_market import run as cex_run
@@ -27,7 +28,7 @@ def handler_for(password):
         def do_GET(self):
             if self.path=='/healthz':
                 apps=flap_apps.status()
-                self.push_response({'ok':True,'features':['flap_apps_v1'],'flap_apps_ready':apps['updated'] is not None and not apps['error']});return
+                self.push_response({'ok':True,'features':['flap_apps_v1','gate_review_v1'],'flap_apps_ready':apps['updated'] is not None and not apps['error']});return
             if not self.authenticated():return
             if self.path=='/':
                 page=(monitor.ROOT/'index.html').read_text(encoding='utf-8')
@@ -52,13 +53,15 @@ el('clawbot-test').onclick=()=>pushAction('/api/push/test',{channel:'clawbot'});
             if not self.authenticated():return
             # Only the explicit test action is writable; configuration stays platform-only.
             expected_origin='https://'+self.headers.get('Host','')
-            if (self.path not in ('/api/push/test','/api/arb/quote') or self.headers.get('Origin')!=expected_origin
+            if (self.path not in ('/api/push/test','/api/arb/quote','/api/gate/review') or self.headers.get('Origin')!=expected_origin
                     or self.headers.get('Content-Type','').split(';')[0]!='application/json'):
                 self.push_response({'error':'云端只读；测试请求必须来自当前看板'},403);return
             try:
                 length=int(self.headers.get('Content-Length','0'))
                 if not 0<length<=4096:raise ValueError('请求长度无效')
                 data=json.loads(self.rfile.read(length))
+                if self.path=='/api/gate/review':
+                    self.push_response(gate_review.review(data));return
                 if self.path=='/api/arb/quote':
                     self.push_response(dex_quotes.manual_quote(data));return
                 if not isinstance(data,dict) or set(data)-{'channel'}:raise ValueError('测试请求格式无效')
