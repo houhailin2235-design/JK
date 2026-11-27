@@ -7,6 +7,7 @@ from spreads import rank_spreads
 from quality import assess,Confirmation,cross_check
 import wechat_push
 import blockbeats
+import equation_news
 import flap_apps
 import gate_review
 import dex_quotes
@@ -201,6 +202,7 @@ class Handler(BaseHTTPRequestHandler):
             self.push_response(result)
         except Exception as e:self.push_response({'error':str(e) if isinstance(e,ValueError) else '操作失败，请检查本地配置'},400)
     def do_GET(self):
+        if self.path=='/api/equation/status':self.push_response(equation_news.status());return
         if self.path=='/api/arb/assets':self.push_response(json.loads((ROOT/'data/arb-assets.json').read_text(encoding='utf-8')));return
         if self.path=='/arbitrage-guide.md':
             body=(ROOT/'ARBITRAGE_GUIDE.md').read_bytes()
@@ -241,6 +243,7 @@ if __name__=='__main__':
         server=ThreadingHTTPServer(('127.0.0.1',args.port),Handler)
         threading.Thread(target=wechat_push.worker,daemon=True).start()
         threading.Thread(target=blockbeats.run,args=(wechat_push.enqueue,),daemon=True).start()
+        threading.Thread(target=equation_news.run,args=(wechat_push.enqueue,),daemon=True).start()
         threading.Thread(target=flap_apps.run,args=(wechat_push.enqueue,),daemon=True).start()
         from cex_market import run as cex_run
         threading.Thread(target=cex_run,args=(get,publish,Detector,config,STATE,LOCK),daemon=True).start()

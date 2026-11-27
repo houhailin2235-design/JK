@@ -37,7 +37,7 @@ def is_alpha_listing_news(title):
     return False
 
 def should_push(item,mode):
-    if mode=='crash':return is_crash_news(item['title']) or is_theft_news(item['title']) or is_alpha_listing_news(item['title'])
+    if mode=='crash':return is_crash_news(item['title']) or is_theft_news(item['title']) or (os.environ.get('EQN_ALPHA_ENABLED','true').lower()!='true' and is_alpha_listing_news(item['title']))
     if mode=='risk':return item.get('risk',False)
     return mode=='all'
 

@@ -4,6 +4,7 @@ import blockbeats
 import wechat_push
 
 class NewsChecks(unittest.TestCase):
+    @patch.dict('os.environ',{'EQN_ALPHA_ENABLED':'false'})
     def test_binance_alpha_listing_announcements(self):
         for title in ['Binance Alpha上线ABC','币安Alpha将于今日上线ABC（ABC）','ABC将上线币安 Alpha',
                       'Binance Alpha will list ABC tomorrow','ABC is listed on Binance Alpha',

@@ -20,7 +20,7 @@ class CloudChecks(unittest.TestCase):
                 quote_status=json.load(response)
                 self.assertFalse(quote_status['execution_enabled'])
                 self.assertEqual(set(quote_status['chains']),{'bsc','base','ethereum'})
-            for path in ['/api/arb/wallet-config','/wallet-connect.js','/api/flap-apps/status','/arbitrage-guide.md','/api/arb/assets']:
+            for path in ['/api/arb/wallet-config','/wallet-connect.js','/api/flap-apps/status','/arbitrage-guide.md','/api/arb/assets','/api/equation/status']:
                 with self.assertRaises(urllib.error.HTTPError) as private:
                     opener.open(root+path)
                 self.assertEqual(private.exception.code,401);private.exception.close()
