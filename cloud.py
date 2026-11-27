@@ -7,6 +7,7 @@ import threading
 from http.server import ThreadingHTTPServer
 import monitor
 import blockbeats
+import flap_apps
 import wechat_push
 import dex_quotes
 from cex_market import run as cex_run
@@ -25,7 +26,8 @@ def handler_for(password):
 
         def do_GET(self):
             if self.path=='/healthz':
-                self.push_response({'ok':True});return
+                apps=flap_apps.status()
+                self.push_response({'ok':True,'features':['flap_apps_v1'],'flap_apps_ready':apps['updated'] is not None and not apps['error']});return
             if not self.authenticated():return
             if self.path=='/':
                 page=(monitor.ROOT/'index.html').read_text(encoding='utf-8')
@@ -75,7 +77,7 @@ def main():
     if len(password)<16:raise SystemExit('Set DASHBOARD_PASSWORD with at least 16 characters before deploying')
     config=json.loads((monitor.ROOT/'config.json').read_text(encoding='utf-8'))
     server=ThreadingHTTPServer(('0.0.0.0',int(os.environ.get('PORT','8080'))),handler_for(password))
-    for target,args in [(dex_quotes.run,(monitor.quote_inputs,)),(wechat_push.worker,()),(blockbeats.run,(wechat_push.enqueue,)),
+    for target,args in [(dex_quotes.run,(monitor.quote_inputs,)),(wechat_push.worker,()),(blockbeats.run,(wechat_push.enqueue,)),(flap_apps.run,(wechat_push.enqueue,)),
                         (cex_run,(monitor.get,monitor.publish,monitor.Detector,config,monitor.STATE,monitor.LOCK)),
                         (monitor.worker,(config,))]:
         threading.Thread(target=target,args=args,daemon=True).start()

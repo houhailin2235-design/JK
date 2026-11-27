@@ -20,10 +20,16 @@ class CloudChecks(unittest.TestCase):
                 quote_status=json.load(response)
                 self.assertFalse(quote_status['execution_enabled'])
                 self.assertEqual(set(quote_status['chains']),{'bsc','base','ethereum'})
-            for path in ['/api/arb/wallet-config','/wallet-connect.js']:
+            for path in ['/api/arb/wallet-config','/wallet-connect.js','/api/flap-apps/status']:
                 with self.assertRaises(urllib.error.HTTPError) as private:
                     opener.open(root+path)
                 self.assertEqual(private.exception.code,401);private.exception.close()
+            with opener.open(root+'/healthz') as response:
+                health=json.load(response)
+                self.assertIn('flap_apps_v1',health['features'])
+                self.assertNotIn('items',health)
+            with opener.open(urllib.request.Request(root+'/api/flap-apps/status',headers={'Authorization':auth})) as response:
+                self.assertEqual(json.load(response)['poll_seconds'],60)
             with opener.open(urllib.request.Request(root+'/api/arb/wallet-config',headers={'Authorization':auth})) as response:
                 wallet_config=json.load(response)
                 self.assertEqual(set(wallet_config['chains']),{'0x38','0x2105','0x1'})

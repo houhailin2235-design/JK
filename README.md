@@ -64,3 +64,10 @@ The default arbitrage list now contains only fresh positive quotes that passed a
 ### Binance Alpha news alerts
 
 The existing selected-news mode (`crash`, retained for environment compatibility) now also includes Binance Alpha / 币安 Alpha token-listing announcement headlines, including announced scheduled listings. It uses headline matching and filters rumors, denials, delistings, historical mentions and feature/campaign updates. Body-only historical mentions do not trigger. Existing 30-second polling, service-account delivery, per-news-ID deduplication and first-start baseline remain. This is a BlockBeats news filter, not a direct Binance announcement feed. News/push tests include positive and negative Alpha examples.
+
+
+### Flap app-directory monitor
+
+`flap_apps.py` polls the public backend used by https://flap.sh/apps?tab=all&lang=zh every 60 seconds, following all cursors and rejecting partial/inconsistent responses. Existing entries establish a first-success baseline without notifications. New slug/app-ID identities enqueue a namespaced text alert through the existing PushPlus service-account queue. Sorting, title changes and reappearance do not resend; app-ID aliases also avoid duplicate notifications after slug changes when available. App details are displayed in a separate dashboard tab and `/api/flap-apps/status` requires dashboard authentication. No wallets or app execution are involved.
+
+`FLAP_APPS_ENABLED` and `FLAP_APPS_PUSH_ENABLED` default to `true`; actual delivery also requires the existing `PUSH_ENABLED` and PushPlus token. `flap-apps-cache.json` lives in `RADAR_STATE_DIR`, with atomic replacement before enqueueing. Without a persistent volume, container replacement establishes a new baseline and can miss changes during downtime. Notifications are queue submissions, not delivery receipts, and inherit existing queue/quota limits. `/healthz` exposes only the feature marker and readiness boolean for this monitor. Live public-directory read returned 12 items during setup; 44 Python checks plus dashboard script checks passed.
