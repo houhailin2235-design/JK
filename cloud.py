@@ -30,7 +30,7 @@ def handler_for(password):
             if self.path=='/healthz':
                 apps=flap_apps.status()
                 eqn=equation_news.status()
-                self.push_response({'ok':True,'features':['flap_apps_v1','gate_review_v1','asset_batch_v1','push_liquidity_v2','equation_alpha_v1'],'flap_apps_ready':apps['updated'] is not None and not apps['error'],'equation_alpha_ready':eqn['updated'] is not None and not eqn['error']});return
+                self.push_response({'ok':True,'features':['flap_apps_v1','gate_review_v1','asset_batch_v1','push_liquidity_v2','equation_alpha_v1','equation_alpha_only_v1'],'flap_apps_ready':apps['updated'] is not None and not apps['error'],'equation_alpha_ready':eqn['updated'] is not None and not eqn['error']});return
             if not self.authenticated():return
             if self.path=='/':
                 page=(monitor.ROOT/'index.html').read_text(encoding='utf-8')

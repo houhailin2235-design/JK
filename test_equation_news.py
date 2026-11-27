@@ -8,11 +8,19 @@ def raw(no=1,zh='币安 Alpha 上线新代币：\nExample (XYZ)\n合约地址：
 
 class EquationChecks(unittest.TestCase):
     def test_listing_classification(self):
-        for title,source in [('币安 Alpha 上线新代币：','Binance Alpha'),('ABC将上线币安Alpha','Binance Alpha'),('Aster永续合约上线：ABCUSDT','Aster合约上新'),('Aster Perp Listing: ABCUSDT','Aster')]:
+        for title,source in [('币安 Alpha 上线新代币：','Binance Alpha'),('ABC将上线币安Alpha','Binance Alpha')]:
             self.assertTrue(q.is_listing(title,source),title)
         for title,source in [('Alpha积分规则更新','Binance Alpha'),('币安Alpha第三波空投奖励现已开启','Binance Wallet Pre-TGE'),('请准备好领取币安Alpha空投','Binance Wallet Pre-TGE'),('Aster下架ABCUSDT','Aster'),('Aster交易竞赛活动上线','Aster'),('传闻币安Alpha上线ABC','Binance Alpha'),('币安Alpha上线代币化股票','Binance Alpha')]:
             self.assertFalse(q.is_listing(title,source),title)
         self.assertFalse(q.is_listing('Aster Spot Listing: NVDABUSDT','Aster'))
+        for title in ['Aster永续合约上线：ABCUSDT','Aster Perp Listing: ABCUSDT','Aster现货上线：XYZUSDT']:
+            self.assertFalse(q.is_listing(title,'Aster合约上新'))
+    def test_old_aster_cache_is_removed_but_seen_ids_preserved(self):
+        with tempfile.TemporaryDirectory(dir=pathlib.Path(__file__).parent) as folder:
+            path=pathlib.Path(folder)/'cache.json'
+            path.write_text(json.dumps({'seen':['1','2'],'items':[{'title':'Aster永续合约上线ABC','source':'Aster'},{'title':'币安Alpha上线XYZ','source':'Binance Alpha'}]}))
+            with patch.object(q,'CACHE',path):cache=q.load_cache()
+            self.assertEqual(len(cache['items']),1);self.assertEqual(cache['seen'],['1','2'])
     def test_parse_links_timezone_and_language(self):
         items,cursor=q.parse({'items':[raw()],'next_cursor':None})
         self.assertIn('Example',items[0]['title']);self.assertTrue(items[0]['listing'])

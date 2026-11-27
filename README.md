@@ -101,3 +101,8 @@ The dedicated `alpha` feed for 方程式-币安Alpha&Aster上新 (@eqn_alpha_ast
 The first successful read establishes a no-replay baseline; later fresh unseen listings (within one hour) enter the existing service-account news queue. `EQN_ALPHA_ENABLED` and `EQN_ALPHA_PUSH_ENABLED` default to true and delivery uses the existing PushPlus master switch. When enabled, it takes over Alpha listing alerts from the selected BlockBeats mode; BlockBeats crash/theft alerts remain. Disabling `EQN_ALPHA_ENABLED` restores the old BlockBeats Alpha keyword behavior. Aster derivatives listings are news, not spot-arbitrage opportunities.
 
 The new Alpha/Aster dashboard tab and authenticated `/api/equation/status` show polling status and recent listing messages. Cache is in `RADAR_STATE_DIR`; without a persistent volume container replacement resets the baseline. The public health endpoint reports only its feature/readiness marker. 64 regression checks passed, plus live public-feed parsing and dashboard JS syntax checks. No Telegram account, private credentials, trading, or historical test notifications were used.
+
+
+### Alpha-only selection update
+
+Per user preference, the EquationNews `alpha` channel now selects Binance Alpha token-listing announcements only. Aster spot/perpetual listing announcements are excluded. Old cached Aster entries are filtered on cache load while preserving seen message IDs. The source Telegram channel itself still carries both topics; the local filter and dashboard are Alpha-only. BlockBeats crash/theft coverage and the existing 10-second polling/service-account delivery are unchanged. Targeted news/cache tests and dashboard script checks pass.

@@ -26,10 +26,7 @@ def status():
 def is_listing(title,source):
     if re.search(r'xstocks?|bstocks?|代币化股票|\bETF\b',title,re.I):return False
     if any(excluded({'token':symbol}) for symbol in re.findall(r'(?<![A-Za-z0-9])([A-Z0-9]{2,24})USDT(?![A-Za-z0-9])',title)):return False
-    if blockbeats.is_alpha_listing_news(source+' '+title):return True
-    if not re.search(r'(?<![a-z0-9])aster(?![a-z0-9])',source+' '+title,re.I):return False
-    if re.search(r'下架|移除|取消|传闻|可能|或将|积分|活动|竞赛|\b(?:delist\w*|cancel\w*|rumou?r\w*|may|might|could|not)\b',title,re.I):return False
-    return bool(re.search(r'上线|上新|新增|上架|\b(?:list(?:s|ed|ing)?|launch(?:es|ed|ing)?)\b',title,re.I))
+    return blockbeats.is_alpha_listing_news(source+' '+title)
 
 def parse(data):
     if not isinstance(data,dict) or not isinstance(data.get('items'),list):raise ValueError('方程式接口结构异常')
@@ -86,6 +83,7 @@ def load_cache():
     try:
         cache=json.loads(CACHE.read_text(encoding='utf-8'))
         if not isinstance(cache,dict) or not isinstance(cache.get('seen'),list) or not all(isinstance(x,str) for x in cache['seen']):return {}
+        cache['items']=[x for x in cache.get('items',[]) if isinstance(x,dict) and isinstance(x.get('title'),str) and isinstance(x.get('source'),str) and is_listing(x['title'],x['source'])]
         return cache
     except (OSError,ValueError):return {}
 
