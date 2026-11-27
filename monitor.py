@@ -60,6 +60,7 @@ class Detector:
 def publish(alert):
     if excluded(alert):return
     alert={'time':time.time(),**alert}
+    wechat_push.prepare(alert)
     with LOCK:
         STATE['alerts'].insert(0,alert)
         del STATE['alerts'][200:]

@@ -94,7 +94,7 @@ class QuoteTests(unittest.TestCase):
 
     def test_candidate_push_requires_recheck_and_separate_cooldown(self):
         import wechat_push as push
-        row={'type':'arb_candidate','chain':'bsc','contract':dq.WBNB,'positive_quote_rechecked':True,'buffered_net_usdt':1,'observed_at':dq.time.time()}
+        row={'type':'arb_candidate','chain':'bsc','contract':dq.WBNB,'positive_quote_rechecked':True,'buffered_net_usdt':1,'observed_at':dq.time.time(),'push_liquidity_verified':True,'push_pool_liquidity':100000,'push_pool_observed_at':dq.time.time()}
         self.assertTrue(push.qualifies(row))
         self.assertFalse(push.qualifies({**row,'observed_at':0}))
         self.assertFalse(push.qualifies({**row,'positive_quote_rechecked':False}))

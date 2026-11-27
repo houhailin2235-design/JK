@@ -1,6 +1,7 @@
 from asset_filter import excluded
 """PushPlus transport. Token remains server-side; no token is included in status/logs."""
 import collections,datetime,json,os,pathlib,queue,re,threading,time,urllib.request
+import push_quality
 from runtime_paths import STATE_ROOT
 ROOT=pathlib.Path(__file__).resolve().parent
 SECRET=STATE_ROOT/'pushplus.local.json'
@@ -32,6 +33,8 @@ def status():
 def qualifies(a):
     if a.get("type")=="newsflash":return bool(a.get("news_id"))
     if excluded(a):return False
+    if a.get('type') in push_quality.TYPES:
+        if not a.get('push_liquidity_verified') or a.get('push_pool_liquidity',0)<50000 or not -5<=time.time()-a.get('push_pool_observed_at',0)<=90:return False
     if a.get('type')=='arb_candidate':return bool(a.get('positive_quote_rechecked') and a.get('buffered_net_usdt',0)>0 and 0<=time.time()-a.get('observed_at',0)<=90)
     spread=not a.get('quarantine_reason') and a.get('type')=='indicative_spread' and a.get('spread_identity')=='verified' and a.get('indicative_spread_percent',0)>25
     crash=a.get('type') in ('cex_crash','multi_pool_price_drop') and a.get('drop_percent',0)>=25
@@ -68,7 +71,15 @@ def send(title,content,test=False,channel='wechat'):
     if not ok:raise ValueError(STATUS['last_result'])
     return status()
 
+def prepare(alert):
+    if alert.get('type') not in push_quality.TYPES:return
+    import monitor
+    with monitor.LOCK:pools=list(monitor.STATE.get('pairs',[]))
+    config=json.loads((ROOT/'config.json').read_text(encoding='utf-8'))
+    alert.update(push_quality.evaluate(alert,pools,config,time.time()))
+
 def enqueue(alert):
+    if alert.get('type') in push_quality.TYPES and 'push_liquidity_verified' not in alert:prepare(alert)
     if not qualifies(alert) or not settings().get('enabled'):return
     key=('news:'+alert['news_id']) if alert.get('type')=='newsflash' else alert.get('chain','')+':'+(alert.get('contract') or alert.get('pair') or alert.get('token',''))
     if alert.get('type')=='arb_candidate':key='arb:'+key
@@ -81,6 +92,7 @@ def worker():
     while True:
         a=JOBS.get()
         try:
+            if a.get('type') in push_quality.TYPES:prepare(a)
             if a.get('type')=='arb_candidate':
                 if qualifies(a):send(a['news_title'],a['news_content'])
             elif a.get('type')=='newsflash':
@@ -100,10 +112,11 @@ def channels_for(a):
     return channels
 
 def send_market(a):
+    if not qualifies(a):return
     is_spread=a.get('type') in ('indicative_spread','extreme_spread')
     amount=a.get('indicative_spread_percent',0) if is_spread else a.get('drop_percent',0)
     title=f"{'极端价差⚠待核实' if a.get('type')=='extreme_spread' else '参考价差（非净利润）' if is_spread else '下跌'} {amount:.2f}% · {a.get('token','')}"
-    content='\n'.join([f"链：{a.get('chain','')}",f"平台：{a.get('best_venue','')} {a.get('cex','')}",f"{'参考价差' if is_spread else '监测跌幅'}：{amount}%",f"类型：{a.get('verification',a.get('type',''))}",f"CA：{a.get('contract','')}",f"池子：{a.get('url','')}",'仅参考价差，未扣成本及验证充提路线。'])
+    content='\n'.join([f"链：{a.get('chain','')}",f"平台：{a.get('best_venue','')} {a.get('cex','')}",f"{'参考价差' if is_spread else '监测跌幅'}：{amount}%",f"类型：{a.get('verification',a.get('type',''))}",f"链上参考链：{a.get('push_pool_chain','')}",f"CA：{a.get('push_pool_ca') or a.get('contract','')}",f"链上参考池流动性：${a.get('push_pool_liquidity',0):,.2f}",f"池子：{a.get('push_pool_url') or a.get('url','')}",'仅通过采样时流动性过滤，未验证可成交金额、充提及净利润。'])
     errors=[]
     for i,channel in enumerate(channels_for(a)):
         if i:time.sleep(REQUEST_INTERVAL)

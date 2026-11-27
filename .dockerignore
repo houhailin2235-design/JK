@@ -30,3 +30,5 @@
 !ARBITRAGE_GUIDE.md
 
 !data/arb-assets.json
+
+!push_quality.py
