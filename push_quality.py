@@ -34,24 +34,21 @@ def good_pool(row,config,now):
     return bool(row.get('quality_ok') and row.get('eligible') and not row.get('pool_outlier')
                 and -5<=now-row.get('observed_at',0)<=60)
 
+def cex_qualifies(alert,now):
+    if alert.get('type')!='cex_crash' or alert.get('stale'):return False
+    drop=alert.get('drop_percent');price=alert.get('price');observed=alert.get('observed_at')
+    if any(isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) for v in (drop,price,observed)):return False
+    return 25<=drop<=100 and price>0 and -5<=now-observed<=90
+
 def evaluate(alert,pools,config,now,resolve_gate=gate_identities):
     if alert.get('type') not in TYPES:return {}
-    if alert.get('type')=='cex_crash' and alert.get('drop_percent',0)<25:
-        return {'push_liquidity_verified':False,'push_liquidity_reason':'交易所跌幅未达到25%推送门槛'}
-    identities=[];basis='same_contract_pool'
     if alert.get('type')=='cex_crash':
-        venue=alert.get('venue') or alert.get('chain');symbol=alert.get('symbol') or alert.get('token')
-        basis='exchange_identity_and_pool'
-        if venue=='Gate':
-            try:identities=resolve_gate(symbol)
-            except Exception:pass  # Identity failure cannot qualify an opportunity.
-        else:
-            for mapping in config.get('verified_cex_mappings',[]):
-                if (venue in mapping.get('verified_venues',['OKX']) and mapping.get('okx_instrument','').split('-')[0]==symbol):
-                    identities.append((mapping['chain'],mapping['address'].lower()))
-    else:
-        contract=alert.get('contract')
-        if isinstance(contract,str):identities=[(alert.get('chain'),contract.lower())]
+        eligible=cex_qualifies(alert,now)
+        return {'push_liquidity_required':False,'push_cex_eligible':eligible,
+                'push_cex_reason':'交易所跌幅达到25%，独立提醒，不代表套利机会' if eligible else '跌幅不足25%或交易所报价无效/过期'}
+    identities=[];basis='same_contract_pool'
+    contract=alert.get('contract')
+    if isinstance(contract,str):identities=[(alert.get('chain'),contract.lower())]
     matched=[p for p in pools if (p.get('chain'),str(p.get('contract','')).lower()) in identities]
     # DEX events already carry their own observed pool, but it must pass all gates.
     if alert.get('type')!='cex_crash' and not matched and alert.get('liquidity') is not None:matched=[alert]

@@ -33,6 +33,7 @@ def status():
 def qualifies(a):
     if a.get("type")=="newsflash":return bool(a.get("news_id"))
     if excluded(a):return False
+    if a.get('type')=='cex_crash':return push_quality.cex_qualifies(a,time.time())
     if a.get('type') in push_quality.TYPES:
         if not a.get('push_liquidity_verified') or a.get('push_pool_liquidity',0)<50000 or not -5<=time.time()-a.get('push_pool_observed_at',0)<=90:return False
     if a.get('type')=='arb_candidate':return bool(a.get('positive_quote_rechecked') and a.get('buffered_net_usdt',0)>0 and 0<=time.time()-a.get('observed_at',0)<=90)
@@ -73,6 +74,9 @@ def send(title,content,test=False,channel='wechat'):
 
 def prepare(alert):
     if alert.get('type') not in push_quality.TYPES:return
+    if alert.get('type')=='cex_crash':
+        alert.update(push_quality.evaluate(alert,[],{},time.time()))
+        return
     import monitor
     with monitor.LOCK:pools=list(monitor.STATE.get('pairs',[]))
     config=json.loads((ROOT/'config.json').read_text(encoding='utf-8'))
@@ -117,6 +121,12 @@ def send_market(a):
     amount=a.get('indicative_spread_percent',0) if is_spread else a.get('drop_percent',0)
     title=f"{'极端价差⚠待核实' if a.get('type')=='extreme_spread' else '参考价差（非净利润）' if is_spread else '下跌'} {amount:.2f}% · {a.get('token','')}"
     content='\n'.join([f"链：{a.get('chain','')}",f"平台：{a.get('best_venue','')} {a.get('cex','')}",f"{'参考价差' if is_spread else '监测跌幅'}：{amount}%",f"类型：{a.get('verification',a.get('type',''))}",f"链上参考链：{a.get('push_pool_chain','')}",f"CA：{a.get('push_pool_ca') or a.get('contract','')}",f"链上参考池流动性：${a.get('push_pool_liquidity',0):,.2f}",f"池子：{a.get('push_pool_url') or a.get('url','')}",'仅通过采样时流动性过滤，未验证可成交金额、充提及净利润。'])
+    if a.get('type')=='cex_crash':
+        title=f"交易所暴跌 {amount:.2f}% · {a.get('token','')}"
+        content='\n'.join([f"平台：{a.get('venue') or a.get('chain','')}",f"交易对：{a.get('pair','')}",
+                            f"监测跌幅：{amount:.2f}%",f"监测窗口：{a.get('window_seconds','未知')}秒",
+                            f"窗口参考价：{a.get('old_price','未知')}",f"最新成交价：{a.get('price','未知')} USDT",
+                            '交易所行情独立提醒；不依赖链上池验证，不代表可套利。'])
     errors=[]
     for i,channel in enumerate(channels_for(a)):
         if i:time.sleep(REQUEST_INTERVAL)
