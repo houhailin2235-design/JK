@@ -12,6 +12,7 @@ import flap_apps
 import gate_review
 import wechat_push
 import dex_quotes
+import cex_review
 from cex_market import run as cex_run
 
 
@@ -30,7 +31,7 @@ def handler_for(password):
             if self.path=='/healthz':
                 apps=flap_apps.status()
                 eqn=equation_news.status()
-                self.push_response({'ok':True,'features':['flap_apps_v1','gate_review_v1','asset_batch_v1','push_liquidity_v2','equation_alpha_v1','equation_alpha_only_v1','cex_crash_independent_v1'],'flap_apps_ready':apps['updated'] is not None and not apps['error'],'equation_alpha_ready':eqn['updated'] is not None and not eqn['error']});return
+                self.push_response({'ok':True,'features':['flap_apps_v1','gate_review_v1','asset_batch_v1','push_liquidity_v2','equation_alpha_v1','equation_alpha_only_v1','cex_crash_independent_v1','multi_cex_review_v1'],'flap_apps_ready':apps['updated'] is not None and not apps['error'],'equation_alpha_ready':eqn['updated'] is not None and not eqn['error']});return
             if not self.authenticated():return
             if self.path=='/':
                 page=(monitor.ROOT/'index.html').read_text(encoding='utf-8')
@@ -55,13 +56,15 @@ el('clawbot-test').onclick=()=>pushAction('/api/push/test',{channel:'clawbot'});
             if not self.authenticated():return
             # Only the explicit test action is writable; configuration stays platform-only.
             expected_origin='https://'+self.headers.get('Host','')
-            if (self.path not in ('/api/push/test','/api/arb/quote','/api/gate/review') or self.headers.get('Origin')!=expected_origin
+            if (self.path not in ('/api/push/test','/api/arb/quote','/api/gate/review','/api/cex-review') or self.headers.get('Origin')!=expected_origin
                     or self.headers.get('Content-Type','').split(';')[0]!='application/json'):
                 self.push_response({'error':'云端只读；测试请求必须来自当前看板'},403);return
             try:
                 length=int(self.headers.get('Content-Length','0'))
                 if not 0<length<=4096:raise ValueError('请求长度无效')
                 data=json.loads(self.rfile.read(length))
+                if self.path=='/api/cex-review':
+                    self.push_response(cex_review.manual_review(data));return
                 if self.path=='/api/gate/review':
                     self.push_response(gate_review.review(data));return
                 if self.path=='/api/arb/quote':
@@ -82,7 +85,7 @@ def main():
     if len(password)<16:raise SystemExit('Set DASHBOARD_PASSWORD with at least 16 characters before deploying')
     config=json.loads((monitor.ROOT/'config.json').read_text(encoding='utf-8'))
     server=ThreadingHTTPServer(('0.0.0.0',int(os.environ.get('PORT','8080'))),handler_for(password))
-    for target,args in [(dex_quotes.run,(monitor.quote_inputs,)),(wechat_push.worker,()),(blockbeats.run,(wechat_push.enqueue,)),(equation_news.run,(wechat_push.enqueue,)),(flap_apps.run,(wechat_push.enqueue,)),
+    for target,args in [(dex_quotes.run,(monitor.quote_inputs,)),(cex_review.run,(monitor.quote_inputs,)),(wechat_push.worker,()),(blockbeats.run,(wechat_push.enqueue,)),(equation_news.run,(wechat_push.enqueue,)),(flap_apps.run,(wechat_push.enqueue,)),
                         (cex_run,(monitor.get,monitor.publish,monitor.Detector,config,monitor.STATE,monitor.LOCK)),
                         (monitor.worker,(config,))]:
         threading.Thread(target=target,args=args,daemon=True).start()

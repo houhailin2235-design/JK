@@ -11,6 +11,7 @@ import equation_news
 import flap_apps
 import gate_review
 import dex_quotes
+import cex_review
 import logging
 from logging.handlers import RotatingFileHandler
 
@@ -194,6 +195,7 @@ class Handler(BaseHTTPRequestHandler):
             data=json.loads(self.rfile.read(length))
             if self.path=='/api/arb/quote':result=dex_quotes.manual_quote(data)
             elif self.path=='/api/gate/review':result=gate_review.review(data)
+            elif self.path=='/api/cex-review':result=cex_review.manual_review(data)
             elif self.path=='/api/push/config':wechat_push.save(data.get('token',''),data.get('enabled',False));result=wechat_push.status()
             elif self.path=='/api/news/config':
                 blockbeats.save(data.get('api_key',''),data.get('enabled',False),data.get('mode','all'));result=blockbeats.status()
@@ -202,6 +204,10 @@ class Handler(BaseHTTPRequestHandler):
             self.push_response(result)
         except Exception as e:self.push_response({'error':str(e) if isinstance(e,ValueError) else '操作失败，请检查本地配置'},400)
     def do_GET(self):
+        if self.path=='/cex-review.js':
+            body=(ROOT/'cex-review.js').read_bytes()
+            self.send_response(200);self.send_header('Content-Type','application/javascript; charset=utf-8');self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(body);return
+        if self.path=='/api/cex-review/status':self.push_response(cex_review.status());return
         if self.path=='/api/equation/status':self.push_response(equation_news.status());return
         if self.path=='/api/arb/assets':self.push_response(json.loads((ROOT/'data/arb-assets.json').read_text(encoding='utf-8')));return
         if self.path=='/arbitrage-guide.md':
@@ -249,5 +255,6 @@ if __name__=='__main__':
         threading.Thread(target=cex_run,args=(get,publish,Detector,config,STATE,LOCK),daemon=True).start()
         threading.Thread(target=worker,args=(config,),daemon=True).start()
         threading.Thread(target=dex_quotes.run,args=(quote_inputs,),daemon=True).start()
+        threading.Thread(target=cex_review.run,args=(quote_inputs,),daemon=True).start()
         print(f'Local dashboard: http://127.0.0.1:{args.port}',flush=True)
         server.serve_forever()

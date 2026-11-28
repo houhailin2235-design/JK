@@ -20,13 +20,14 @@ class CloudChecks(unittest.TestCase):
                 quote_status=json.load(response)
                 self.assertFalse(quote_status['execution_enabled'])
                 self.assertEqual(set(quote_status['chains']),{'bsc','base','ethereum'})
-            for path in ['/api/arb/wallet-config','/wallet-connect.js','/api/flap-apps/status','/arbitrage-guide.md','/api/arb/assets','/api/equation/status']:
+            for path in ['/api/arb/wallet-config','/wallet-connect.js','/api/flap-apps/status','/arbitrage-guide.md','/api/arb/assets','/api/equation/status','/api/cex-review/status','/cex-review.js']:
                 with self.assertRaises(urllib.error.HTTPError) as private:
                     opener.open(root+path)
                 self.assertEqual(private.exception.code,401);private.exception.close()
             with opener.open(root+'/healthz') as response:
                 health=json.load(response)
                 self.assertIn('flap_apps_v1',health['features'])
+                self.assertIn('multi_cex_review_v1',health['features'])
                 self.assertNotIn('items',health)
             with opener.open(urllib.request.Request(root+'/api/flap-apps/status',headers={'Authorization':auth})) as response:
                 self.assertEqual(json.load(response)['poll_seconds'],60)
@@ -34,6 +35,15 @@ class CloudChecks(unittest.TestCase):
                 assets=json.load(response)
                 self.assertEqual(len(assets['contracts']),20)
                 self.assertTrue(all(t['route_status']=='official_route_not_connected' for t in assets['contracts']))
+            with patch('cex_review.manual_review',return_value={'execution_enabled':False}) as multi:
+                for origin in ['https://evil.example','https://radar.example']:
+                    request=urllib.request.Request(root+'/api/cex-review',data=b'{}',headers={**headers,'Origin':origin})
+                    if origin=='https://evil.example':
+                        with self.assertRaises(urllib.error.HTTPError) as denied_multi:opener.open(request)
+                        denied_multi.exception.close();multi.assert_not_called()
+                    else:
+                        with opener.open(request) as response:self.assertFalse(json.load(response)['execution_enabled'])
+                multi.assert_called_once()
             with patch('gate_review.review',return_value={'execution_enabled':False}) as review:
                 with self.assertRaises(urllib.error.HTTPError) as bad_origin:
                     opener.open(urllib.request.Request(root+'/api/gate/review',data=b'{}',headers={**headers,'Origin':'https://evil.example'}))
@@ -67,3 +77,4 @@ class CloudChecks(unittest.TestCase):
         finally:server.shutdown();server.server_close()
 
 if __name__=='__main__':unittest.main()
+

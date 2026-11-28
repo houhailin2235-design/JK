@@ -36,3 +36,16 @@ Gate 是中心化交易所，链上合约不能把 Gate 成交与链上买入放
 - 过期：15秒窗口已过，重新复核。
 
 参考：Gate官方接口文档 https://www.gate.com/docs/developers/apiv4/en/ ；充值教程 https://www.gate.com/help/guide/deposit_withdrawa/16442/how-to-deposit-withdraw-fund-on-gate.io-website
+
+
+## 四家交易所自动金额复核
+
+看板新增“跨平台金额复核”：输入BSC、Base或Ethereum的完整CA、交易所代码和不超过100单位稳定币的金额。服务器从现有V2路由取得买入报价和0.5%滑点缓冲后的数量，再查询Binance、OKX、Gate、KuCoin前100档买盘，按实际可卖数量逐档计算，扣除手续费预算、买入及转账Gas预算。零头不计入现金收入，盘口不足不显示全额差额。
+
+自动复核沿用先触发后查询：原监控出现首次价差或暴跌25%信号后查询50与100单位金额，CA冷却10分钟，每轮最多4币。四家结果按检查状态分组、组内按条件净差额降序排列；不能把身份未核实的平台当成可走路线。
+
+币安充值网络需要服务器环境变量 BINANCE_READ_API_KEY、BINANCE_READ_API_SECRET；OKX需要 OKX_READ_API_KEY、OKX_READ_API_SECRET、OKX_READ_API_PASSPHRASE。只使用读取权限，代码仅调用指定GET接口，没有交易、提现或转账接口。缺少密钥时公开盘口仍查，充值状态显示待核实。不要把密钥发到聊天里。
+
+各平台手续费预算可用 BINANCE_REVIEW_FEE_PERCENT、OKX_REVIEW_FEE_PERCENT、GATE_REVIEW_FEE_PERCENT、KUCOIN_REVIEW_FEE_PERCENT 配置，单位为百分数；未配置使用0.2%示例并标记待核实。配置值是你提供的预算，不是系统读取的实际账户费率。
+
+这些结果是金额报价复核：V2路由不覆盖Metric等其他协议；没有报价不能证明没有机会。尚未模拟实际买入、转账税或完整套利，未验证稳定币汇率及到账时间；没有“保证收益”或“可直接执行”的结论。窗口过期后必须重查。暴跌25%的独立微信提醒不受这套复核影响。
