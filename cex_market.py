@@ -1,5 +1,6 @@
-import concurrent.futures,time,json,pathlib
+import concurrent.futures,time,json,pathlib,math
 from asset_filter import excluded,update_okx
+from stablecoins import is_stablecoin,detector_config
 URLS={
  'Binance':'https://data-api.binance.vision/api/v3/ticker/24hr',
  'OKX':'https://www.okx.com/api/v5/market/tickers?instType=SPOT',
@@ -24,32 +25,45 @@ def normalize(venue,data,now):
     rows=[]
     for x in data:
         if venue=='Binance':
-            pair=x['symbol']
-            if not pair.endswith('USDT'):continue
-            symbol=pair[:-4];price=x['lastPrice'];volume=x['quoteVolume'];bid=x.get('bidPrice');ts=float(x['closeTime'])/1000
+            pair=x['symbol'];quote=next((q for q in ('FDUSD','USDT','USDC') if pair.endswith(q)),None)
+            if quote is None:continue
+            symbol=pair[:-len(quote)];price=x['lastPrice'];volume=x['quoteVolume'];bid=x.get('bidPrice');ask=x.get('askPrice');ts=float(x['closeTime'])/1000
         elif venue=='OKX':
             pair=x['instId']
-            if not pair.endswith('-USDT'):continue
-            symbol=pair[:-5];price=x['last'];volume=x['volCcy24h'];bid=x.get('bidPx');ts=float(x['ts'])/1000
+            if '-' not in pair:continue
+            symbol,quote=pair.rsplit('-',1);price=x.get('last');volume=x.get('volCcy24h',0);bid=x.get('bidPx');ask=x.get('askPx');ts=float(x.get('ts',0))/1000
         elif venue=='Gate':
             pair=x['currency_pair']
-            if not pair.endswith('_USDT'):continue
-            symbol=pair[:-5];price=x['last'];volume=x.get('quote_volume',0);bid=x.get('highest_bid');ts=None
+            if '_' not in pair:continue
+            symbol,quote=pair.rsplit('_',1);price=x.get('last');volume=x.get('quote_volume',0);bid=x.get('highest_bid');ask=x.get('lowest_ask');ts=None
         else:
             pair=x['symbol']
-            if not pair.endswith('-USDT'):continue
-            symbol=pair[:-5];price=x['last'];volume=x.get('volValue',0);bid=x.get('buy');ts=timestamp
+            if '-' not in pair:continue
+            symbol,quote=pair.rsplit('-',1);price=x.get('last');volume=x.get('volValue',0);bid=x.get('buy');ask=x.get('sell');ts=timestamp
+        stable=is_stablecoin(symbol)
+        if quote!='USDT' and not (stable and quote in ('USDC','FDUSD')):continue
         try:
             if active is not None and pair not in active:continue
             if excluded({'venue':venue,'symbol':symbol}):continue
             price=float(price or 0);volume=float(volume or 0)
-            if price<=0:continue
-            rows.append({'key':venue+':'+pair,'venue':venue,'symbol':symbol,'pair':pair,'price':price,'volume_h24':volume,'bid':float(bid or 0),'observed_at':now,'source_timestamp':ts,'stale':ts is not None and (now-ts>60 or ts-now>5)})
-        except (ValueError,TypeError):continue
+            if not math.isfinite(price) or price<=0 or not math.isfinite(volume) or volume<0:continue
+            common={'venue':venue,'pair':pair,'volume_h24':volume,'observed_at':now,'source_timestamp':ts,'stale':ts is not None and (now-ts>60 or ts-now>5)}
+            rows.append({**common,'key':venue+':'+pair,'symbol':symbol,'price':price,'bid':float(bid or 0),'quote_symbol':quote,'stablecoin':stable,'inverted':False})
+            # USDT/USDT does not exist: invert USDC or FDUSD markets to monitor USDT too.
+            if quote=='USDT' and symbol in ('USDC','FDUSD'):
+                ask=float(ask or 0)
+                rows.append({**common,'key':venue+':'+pair+':inverse','symbol':'USDT','price':1/price,'bid':1/ask if ask>0 else 0,'quote_symbol':symbol,'stablecoin':True,'inverted':True})
+        except (ValueError,TypeError,ZeroDivisionError):continue
     return rows
+
+
+def observe_crash(row,detector,stable_detector):
+    selected=stable_detector if is_stablecoin(row['symbol']) else detector
+    return selected.observe('cex:'+row['key'],row['price'],0,row['observed_at'])
 
 def run(get,publish,Detector,config,state,lock):
     detector=Detector(config)
+    stable_detector=Detector(detector_config(config))
     next_classification=0
     while True:
         start=time.monotonic();rows=[];errors=[];counts={}
@@ -68,8 +82,8 @@ def run(get,publish,Detector,config,state,lock):
                     data=normalize(venue,f.result(),time.time());counts[venue]=len(data)
                     for r in data:
                         if not r['stale'] and r['volume_h24']>=config['min_volume_h24_usd']:
-                            for event in detector.observe('cex:'+r['key'],r['price'],0,r['observed_at']):
-                                publish({**r,**event,'chain':venue,'token':r['symbol'],'type':'cex_crash','data_note':'USDT spot; Gate source timestamp unavailable'})
+                            for event in observe_crash(r,detector,stable_detector):
+                                publish({**r,**event,'chain':venue,'token':r['symbol'],'type':'cex_crash','data_note':'Stablecoin cross-quote spot; inverse quotes explicitly labelled; Gate source timestamp unavailable' if r['stablecoin'] else 'USDT spot; Gate source timestamp unavailable'})
                     rows.extend(data)
                 except Exception as e:errors.append(venue+': '+str(e));counts[venue]=0
         with lock:state.update(cex_rows=rows,cex_errors=errors,cex_counts=counts,cex_updated=time.time())

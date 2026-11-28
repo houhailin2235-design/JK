@@ -4,6 +4,7 @@ import re
 import threading
 import time
 import gate_review
+from stablecoins import alert_threshold
 
 TYPES={'cex_crash','indicative_spread','extreme_spread','multi_pool_price_drop','arb_candidate'}
 META={}
@@ -38,14 +39,15 @@ def cex_qualifies(alert,now):
     if alert.get('type')!='cex_crash' or alert.get('stale'):return False
     drop=alert.get('drop_percent');price=alert.get('price');observed=alert.get('observed_at')
     if any(isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) for v in (drop,price,observed)):return False
-    return 25<=drop<=100 and price>0 and -5<=now-observed<=90
+    return alert_threshold(alert)<=drop<=100 and price>0 and -5<=now-observed<=90
 
 def evaluate(alert,pools,config,now,resolve_gate=gate_identities):
     if alert.get('type') not in TYPES:return {}
     if alert.get('type')=='cex_crash':
         eligible=cex_qualifies(alert,now)
         return {'push_liquidity_required':False,'push_cex_eligible':eligible,
-                'push_cex_reason':'交易所跌幅达到25%，独立提醒，不代表套利机会' if eligible else '跌幅不足25%或交易所报价无效/过期'}
+                'push_cex_threshold_percent':alert_threshold(alert),
+                'push_cex_reason':f'交易所跌幅达到{alert_threshold(alert)}%，独立提醒，不代表套利机会' if eligible else f'跌幅不足{alert_threshold(alert)}%或交易所报价无效/过期'}
     identities=[];basis='same_contract_pool'
     contract=alert.get('contract')
     if isinstance(contract,str):identities=[(alert.get('chain'),contract.lower())]

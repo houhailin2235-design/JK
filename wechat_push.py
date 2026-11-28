@@ -122,10 +122,11 @@ def send_market(a):
     title=f"{'极端价差⚠待核实' if a.get('type')=='extreme_spread' else '参考价差（非净利润）' if is_spread else '下跌'} {amount:.2f}% · {a.get('token','')}"
     content='\n'.join([f"链：{a.get('chain','')}",f"平台：{a.get('best_venue','')} {a.get('cex','')}",f"{'参考价差' if is_spread else '监测跌幅'}：{amount}%",f"类型：{a.get('verification',a.get('type',''))}",f"链上参考链：{a.get('push_pool_chain','')}",f"CA：{a.get('push_pool_ca') or a.get('contract','')}",f"链上参考池流动性：${a.get('push_pool_liquidity',0):,.2f}",f"池子：{a.get('push_pool_url') or a.get('url','')}",'仅通过采样时流动性过滤，未验证可成交金额、充提及净利润。'])
     if a.get('type')=='cex_crash':
-        title=f"交易所暴跌 {amount:.2f}% · {a.get('token','')}"
+        title=f"{'稳定币下跌' if push_quality.alert_threshold(a)==5 else '交易所暴跌'} {amount:.2f}% · {a.get('token','')}"
         content='\n'.join([f"平台：{a.get('venue') or a.get('chain','')}",f"交易对：{a.get('pair','')}",
                             f"监测跌幅：{amount:.2f}%",f"监测窗口：{a.get('window_seconds','未知')}秒",
-                            f"窗口参考价：{a.get('old_price','未知')}",f"最新成交价：{a.get('price','未知')} USDT",
+                            f"窗口参考价：{a.get('old_price','未知')}",f"最新参考价：{a.get('price','未知')} {a.get('quote_symbol','USDT')}",
+                            *(['报价方向：原交易对反向换算'] if a.get('inverted') else []),
                             '交易所行情独立提醒；不依赖链上池验证，不代表可套利。'])
     errors=[]
     for i,channel in enumerate(channels_for(a)):

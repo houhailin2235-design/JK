@@ -106,3 +106,10 @@ The new Alpha/Aster dashboard tab and authenticated `/api/equation/status` show 
 ### Alpha-only selection update
 
 Per user preference, the EquationNews `alpha` channel now selects Binance Alpha token-listing announcements only. Aster spot/perpetual listing announcements are excluded. Old cached Aster entries are filtered on cache load while preserving seen message IDs. The source Telegram channel itself still carries both topics; the local filter and dashboard are Alpha-only. BlockBeats crash/theft coverage and the existing 10-second polling/service-account delivery are unchanged. Targeted news/cache tests and dashboard script checks pass.
+
+
+## 稳定币5%提醒（2026-11-28）
+
+USDT、USD1、USDC、FDUSD、DAI、USDS、USDD、TUSD、USDP、PYUSD、USDE、FRAX、GUSD、RLUSD采用30秒、60秒、300秒窗口下跌≥5%的独立提醒规则；普通币仍为25%。检测、微信推送与浏览器通知同步支持5%例外。
+
+USDT通过USDC/USDT或FDUSD/USDT反向报价补充监测，消息标明报价币与反向换算；是相对报价变化，不是固定0.95美元脱锚报警。沿用新鲜度、成交额和冷却要求，覆盖受实际交易对和名单快照限制。重启后重新积累历史窗口。
